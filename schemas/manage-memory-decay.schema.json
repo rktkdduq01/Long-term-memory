@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://long-term-memory.local/schemas/manage-memory-decay.schema.json",
+  "title": "Manage Memory Decay Output",
+  "allOf": [
+    {
+      "$ref": "./memory-decay-update.schema.json"
+    }
+  ]
+}

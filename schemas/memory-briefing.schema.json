@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://long-term-memory.local/schemas/memory-briefing.schema.json",
+  "title": "Memory Briefing",
+  "type": "object",
+  "required": [
+    "hard_rules",
+    "soft_preferences",
+    "recent_cautions",
+    "uncertainties",
+    "conflicts",
+    "rendered_briefing"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "hard_rules": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "soft_preferences": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "recent_cautions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "uncertainties": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "rendered_briefing": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

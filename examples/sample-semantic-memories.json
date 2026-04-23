@@ -1,0 +1,193 @@
+[
+  {
+    "memory_id": "mem_repo_schema_rule",
+    "type": "repo_rule",
+    "gist": "Schema-backed prompts in this repository must return raw JSON matching the named schema.",
+    "scope_type": "repo",
+    "scope_value": "rktkdduq01/Long-term-memory",
+    "confidence": 0.96,
+    "importance": 0.95,
+    "status": "stable",
+    "decay_state": "stable",
+    "created_at": "2026-03-18T09:00:00Z",
+    "updated_at": "2026-04-23T09:00:00Z",
+    "last_confirmed_at": "2026-04-23T09:00:00Z",
+    "evidence_refs": [
+      {
+        "source_type": "repo_config",
+        "source_id": "README.md",
+        "quote_or_summary": "The repository prefers schema-backed JSON for machine-readable steps.",
+        "observed_at": "2026-04-23T09:00:00Z",
+        "trust_level": "trusted"
+      }
+    ],
+    "derived_from": [
+      {
+        "source_kind": "candidate",
+        "source_id": "cand_repo_schema_rule",
+        "relation_type": "promoted_from"
+      }
+    ],
+    "conflicts_with": [],
+    "source_trust_level": "trusted",
+    "sensitivity": "public",
+    "exceptions": [],
+    "boundary_conditions": [
+      "Applies only to prompts that explicitly declare schema-backed JSON output."
+    ]
+  },
+  {
+    "memory_id": "mem_user_minimal_runtime",
+    "type": "user_preference",
+    "gist": "Keep runtime helpers dependency-light and fail fast on missing placeholders.",
+    "scope_type": "global_user",
+    "scope_value": "rktkdduq01",
+    "confidence": 0.9,
+    "importance": 0.84,
+    "status": "promoted",
+    "decay_state": "stable",
+    "created_at": "2026-04-10T10:00:00Z",
+    "updated_at": "2026-04-23T09:00:00Z",
+    "last_confirmed_at": "2026-04-23T09:00:00Z",
+    "evidence_refs": [
+      {
+        "source_type": "user_message",
+        "source_id": "user-turn-2026-04-23-runtime",
+        "quote_or_summary": "Keep the runtime minimal and detect missing placeholders automatically.",
+        "observed_at": "2026-04-23T09:00:00Z",
+        "trust_level": "trusted"
+      }
+    ],
+    "derived_from": [
+      {
+        "source_kind": "candidate",
+        "source_id": "cand_user_minimal_runtime",
+        "relation_type": "promoted_from"
+      }
+    ],
+    "conflicts_with": [],
+    "source_trust_level": "trusted",
+    "sensitivity": "public",
+    "exceptions": [],
+    "boundary_conditions": [
+      "Task-specific instructions can justify extra tooling when necessary."
+    ]
+  },
+  {
+    "memory_id": "mem_failure_fixture_drift",
+    "type": "failure_lesson",
+    "gist": "When prompt fields or schemas change, update fixtures and validators in the same patch.",
+    "scope_type": "repo",
+    "scope_value": "rktkdduq01/Long-term-memory",
+    "confidence": 0.88,
+    "importance": 0.91,
+    "status": "stable",
+    "decay_state": "stable",
+    "created_at": "2026-04-05T14:00:00Z",
+    "updated_at": "2026-04-23T09:00:00Z",
+    "last_confirmed_at": "2026-04-23T09:00:00Z",
+    "evidence_refs": [
+      {
+        "source_type": "manual_review",
+        "source_id": "memory-review-2026-04-23-fixtures",
+        "quote_or_summary": "A recent fix required prompt text, schema files, and fixtures to be updated together before validation passed.",
+        "observed_at": "2026-04-23T09:00:00Z",
+        "trust_level": "partially_trusted"
+      }
+    ],
+    "derived_from": [
+      {
+        "source_kind": "session_distillation",
+        "source_id": "distill-2026-04-23-fixture-sync",
+        "relation_type": "distilled_from"
+      }
+    ],
+    "conflicts_with": [],
+    "source_trust_level": "partially_trusted",
+    "sensitivity": "internal",
+    "exceptions": [],
+    "boundary_conditions": [
+      "Most relevant when prompt outputs or schemas are being changed."
+    ]
+  },
+  {
+    "memory_id": "mem_stale_legacy_fixture_path",
+    "type": "repo_rule",
+    "gist": "Example fixtures live only under runtime/samples and do not need a dedicated examples directory.",
+    "scope_type": "repo",
+    "scope_value": "rktkdduq01/Long-term-memory",
+    "confidence": 0.42,
+    "importance": 0.39,
+    "status": "fading",
+    "decay_state": "fading",
+    "created_at": "2025-11-01T09:00:00Z",
+    "updated_at": "2026-02-01T09:00:00Z",
+    "last_confirmed_at": "2026-01-15T09:00:00Z",
+    "evidence_refs": [
+      {
+        "source_type": "manual_review",
+        "source_id": "legacy-runtime-note-2025-11",
+        "quote_or_summary": "An older runtime note mentioned runtime/samples as the only fixture location.",
+        "observed_at": "2025-11-01T09:00:00Z",
+        "trust_level": "partially_trusted"
+      }
+    ],
+    "derived_from": [
+      {
+        "source_kind": "candidate",
+        "source_id": "cand_legacy_fixture_path",
+        "relation_type": "promoted_from"
+      }
+    ],
+    "conflicts_with": [],
+    "source_trust_level": "partially_trusted",
+    "sensitivity": "internal",
+    "exceptions": [],
+    "boundary_conditions": [
+      "Recorded before the examples/ directory was introduced."
+    ]
+  },
+  {
+    "memory_id": "mem_conflict_plain_text_briefing",
+    "type": "repo_rule",
+    "gist": "Agent handoff briefings may be emitted as plain text when structured JSON feels inconvenient.",
+    "scope_type": "repo",
+    "scope_value": "rktkdduq01/Long-term-memory",
+    "confidence": 0.55,
+    "importance": 0.48,
+    "status": "fading",
+    "decay_state": "fading",
+    "created_at": "2026-01-10T09:00:00Z",
+    "updated_at": "2026-03-02T09:00:00Z",
+    "last_confirmed_at": "2026-02-20T09:00:00Z",
+    "evidence_refs": [
+      {
+        "source_type": "manual_review",
+        "source_id": "legacy-briefing-note-2026-01",
+        "quote_or_summary": "An older note suggested plain-text briefings were acceptable in some automation flows.",
+        "observed_at": "2026-01-10T09:00:00Z",
+        "trust_level": "partially_trusted"
+      }
+    ],
+    "derived_from": [
+      {
+        "source_kind": "candidate",
+        "source_id": "cand_legacy_plain_text_briefing",
+        "relation_type": "promoted_from"
+      }
+    ],
+    "conflicts_with": [
+      {
+        "memory_id": "mem_repo_schema_rule",
+        "conflict_status": "active",
+        "note": "This older guidance conflicts with the current schema-backed JSON contract for automated briefings."
+      }
+    ],
+    "source_trust_level": "partially_trusted",
+    "sensitivity": "internal",
+    "exceptions": [],
+    "boundary_conditions": [
+      "Should not be reused without explicit review because current automation expects structured JSON."
+    ]
+  }
+]

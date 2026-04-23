@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://long-term-memory.local/schemas/extract-ci-failure-memory.schema.json",
+  "title": "Extract CI Failure Memory Output",
+  "type": "object",
+  "required": [
+    "episodic_candidates"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "episodic_candidates": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ciFailureCandidate"
+      }
+    }
+  },
+  "$defs": {
+    "ciFailureCandidate": {
+      "type": "object",
+      "required": [
+        "event_type",
+        "summary",
+        "scope_type",
+        "scope_value",
+        "related_files",
+        "confidence",
+        "evidence_refs",
+        "likely_affected_area",
+        "validation_command",
+        "looks_recurring",
+        "recommended_next_action",
+        "semantic_promotion_allowed",
+        "unresolved"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "const": "ci_failure"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope_type": {
+          "$ref": "./candidate-memory.schema.json#/$defs/scopeType"
+        },
+        "scope_value": {
+          "type": "string",
+          "minLength": 1
+        },
+        "related_files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "confidence": {
+          "$ref": "./candidate-memory.schema.json#/$defs/score"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "./candidate-memory.schema.json#/$defs/evidenceRef"
+          }
+        },
+        "likely_affected_area": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validation_command": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "looks_recurring": {
+          "type": "boolean"
+        },
+        "recommended_next_action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "semantic_promotion_allowed": {
+          "type": "boolean"
+        },
+        "unresolved": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

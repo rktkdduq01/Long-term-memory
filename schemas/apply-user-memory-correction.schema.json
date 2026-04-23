@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://long-term-memory.local/schemas/apply-user-memory-correction.schema.json",
+  "title": "Apply User Memory Correction",
+  "type": "object",
+  "required": [
+    "actions"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action"
+      }
+    }
+  },
+  "$defs": {
+    "actionType": {
+      "type": "string",
+      "enum": [
+        "correct_gist",
+        "refine_scope",
+        "deprecate",
+        "archive",
+        "hard_delete",
+        "keep_unchanged",
+        "flag_for_review"
+      ]
+    },
+    "action": {
+      "type": "object",
+      "required": [
+        "memory_id",
+        "action",
+        "new_gist",
+        "new_scope_type",
+        "new_scope_value",
+        "reason",
+        "provenance"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "$ref": "#/$defs/actionType"
+        },
+        "new_gist": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "new_scope_type": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "global_user",
+            "repo",
+            "branch",
+            "directory",
+            "file",
+            "task_type",
+            "session",
+            null
+          ]
+        },
+        "new_scope_value": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "./candidate-memory.schema.json#/$defs/evidenceRef"
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "correct_gist"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "new_gist": {
+                "type": "string",
+                "minLength": 1
+              },
+              "new_scope_type": {
+                "type": "null"
+              },
+              "new_scope_value": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "const": "refine_scope"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "new_gist": {
+                "type": "null"
+              },
+              "new_scope_type": {
+                "type": "string",
+                "enum": [
+                  "global_user",
+                  "repo",
+                  "branch",
+                  "directory",
+                  "file",
+                  "task_type",
+                  "session"
+                ]
+              },
+              "new_scope_value": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "action": {
+                "enum": [
+                  "deprecate",
+                  "archive",
+                  "hard_delete",
+                  "keep_unchanged",
+                  "flag_for_review"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "new_gist": {
+                "type": "null"
+              },
+              "new_scope_type": {
+                "type": "null"
+              },
+              "new_scope_value": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

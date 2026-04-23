@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://long-term-memory.local/schemas/consolidate-semantic-memories.schema.json",
+  "title": "Consolidate Semantic Memories Output",
+  "type": "object",
+  "required": [
+    "consolidated_memories",
+    "archived_memory_ids"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "consolidated_memories": {
+      "type": "array",
+      "items": {
+        "$ref": "./semantic-memory.schema.json"
+      }
+    },
+    "archived_memory_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    }
+  }
+}

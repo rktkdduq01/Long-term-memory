@@ -1,0 +1,53 @@
+[
+  {
+    "event_id": "sess_evt_user_examples_request",
+    "event_type": "user_request",
+    "source_type": "user_message",
+    "source_id": "user-turn-2026-04-23-examples",
+    "observed_at": "2026-04-23T08:20:00Z",
+    "summary": "The user asked for realistic example fixtures that validate against the current memory harness schemas.",
+    "related_files": [
+      "examples/sample-selection-output.json",
+      "examples/sample-promotion-output.json"
+    ],
+    "trust_level": "trusted"
+  },
+  {
+    "event_id": "sess_evt_fixture_validation_failure",
+    "event_type": "error",
+    "source_type": "test_result",
+    "source_id": "runtime-tests-2026-04-22-selection",
+    "observed_at": "2026-04-22T16:15:00Z",
+    "summary": "A selection output fixture failed validation because it omitted required evidence references.",
+    "related_files": [
+      "examples/sample-selection-output.json",
+      "schemas/memory-selection.schema.json"
+    ],
+    "trust_level": "partially_trusted"
+  },
+  {
+    "event_id": "sess_evt_legacy_briefing_review",
+    "event_type": "review_feedback",
+    "source_type": "manual_review",
+    "source_id": "legacy-briefing-note-2026-01",
+    "observed_at": "2026-04-23T08:40:00Z",
+    "summary": "Manual review found older plain-text briefing guidance that may conflict with the current JSON briefing contract.",
+    "related_files": [
+      "prompts/prepare-task-memory-briefing.md",
+      "examples/sample-briefing-output.json"
+    ],
+    "trust_level": "partially_trusted"
+  },
+  {
+    "event_id": "sess_evt_runtime_decision",
+    "event_type": "decision",
+    "source_type": "agent_message",
+    "source_id": "agent-turn-2026-04-23-runtime",
+    "observed_at": "2026-04-23T09:10:00Z",
+    "summary": "The runtime tests were extended to validate schema-backed examples directly.",
+    "related_files": [
+      "runtime/runtime.test.ts"
+    ],
+    "trust_level": "partially_trusted"
+  }
+]

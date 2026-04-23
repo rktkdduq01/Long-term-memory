@@ -1,0 +1,176 @@
+{
+  "decisions": [
+    {
+      "candidate_id": "cand_repo_examples_validation",
+      "candidate_gist": "Example outputs added under examples/ should be validated against the active schemas in automated tests.",
+      "recommended_decision": "promote",
+      "resulting_status": "promoted",
+      "reason": "This is a durable repository rule with high future reuse and direct user support.",
+      "scores": {
+        "reuse_frequency": {
+          "score": 0.88,
+          "rationale": "Future example additions are likely to rely on the same validation rule."
+        },
+        "decision_impact": {
+          "score": 0.94,
+          "rationale": "Invalid examples weaken automation and make test coverage unreliable."
+        },
+        "confidence": {
+          "score": 0.93,
+          "rationale": "The rule is directly requested and aligned with current repository practice."
+        },
+        "novelty_or_exceptionality": {
+          "score": 0.61,
+          "rationale": "The rule is not exotic, but it is specific enough to be worth keeping."
+        },
+        "explicit_user_signal": {
+          "score": 0.97,
+          "rationale": "The user explicitly requested valid example outputs that tests can use."
+        },
+        "long_horizon_relevance": {
+          "score": 0.9,
+          "rationale": "This should remain relevant whenever the example suite grows."
+        }
+      },
+      "target_memory_id": null,
+      "evidence_refs": [
+        {
+          "source_type": "user_message",
+          "source_id": "user-turn-2026-04-23-examples",
+          "quote_or_summary": "The user requested example outputs that conform to the schemas and can be used by tests.",
+          "observed_at": "2026-04-23T08:20:00Z",
+          "trust_level": "trusted"
+        }
+      ]
+    },
+    {
+      "candidate_id": "cand_failure_fixture_sync",
+      "candidate_gist": "When example fixtures are added or changed, update runtime validation at the same time or drift can go unnoticed.",
+      "recommended_decision": "promote_tentative",
+      "resulting_status": "promoted",
+      "reason": "The lesson is useful and high-impact, but it is based on a smaller evidence set than a core repo rule.",
+      "scores": {
+        "reuse_frequency": {
+          "score": 0.69,
+          "rationale": "Fixture and schema changes are recurring but not constant."
+        },
+        "decision_impact": {
+          "score": 0.89,
+          "rationale": "Missing synchronized validation can leave broken examples undetected."
+        },
+        "confidence": {
+          "score": 0.79,
+          "rationale": "The lesson is supported by recent failures, but the sample size is still limited."
+        },
+        "novelty_or_exceptionality": {
+          "score": 0.64,
+          "rationale": "It is a specific maintenance lesson rather than a generic coding reminder."
+        },
+        "explicit_user_signal": {
+          "score": 0.58,
+          "rationale": "The user asked for testable examples, which indirectly supports this lesson."
+        },
+        "long_horizon_relevance": {
+          "score": 0.87,
+          "rationale": "The lesson remains relevant for future fixture and schema maintenance."
+        }
+      },
+      "target_memory_id": null,
+      "evidence_refs": [
+        {
+          "source_type": "test_result",
+          "source_id": "runtime-tests-2026-04-22-selection",
+          "quote_or_summary": "A fixture regression was only caught after selection output validation was rerun.",
+          "observed_at": "2026-04-22T16:15:00Z",
+          "trust_level": "partially_trusted"
+        }
+      ]
+    },
+    {
+      "candidate_id": "cand_user_offline_examples",
+      "candidate_gist": "Keep example fixtures and runtime validation usable without external API keys.",
+      "recommended_decision": "update_existing",
+      "resulting_status": "promoted",
+      "reason": "This candidate refines an existing user preference already stored for the repository workflow.",
+      "scores": {
+        "reuse_frequency": {
+          "score": 0.72,
+          "rationale": "The offline requirement affects both runtime scripts and fixture validation."
+        },
+        "decision_impact": {
+          "score": 0.81,
+          "rationale": "External dependencies would make local validation and contributor workflows harder."
+        },
+        "confidence": {
+          "score": 0.92,
+          "rationale": "The preference comes directly from an explicit user request."
+        },
+        "novelty_or_exceptionality": {
+          "score": 0.57,
+          "rationale": "It narrows an existing preference rather than creating a brand-new policy."
+        },
+        "explicit_user_signal": {
+          "score": 0.95,
+          "rationale": "The user explicitly required local testing without external API keys."
+        },
+        "long_horizon_relevance": {
+          "score": 0.85,
+          "rationale": "The offline constraint should continue to matter for future contributors."
+        }
+      },
+      "target_memory_id": "mem_user_minimal_runtime",
+      "evidence_refs": [
+        {
+          "source_type": "user_message",
+          "source_id": "user-turn-2026-04-23-runtime",
+          "quote_or_summary": "The runtime and examples should work without external API keys.",
+          "observed_at": "2026-04-23T08:30:00Z",
+          "trust_level": "trusted"
+        }
+      ]
+    },
+    {
+      "candidate_id": "cand_legacy_plain_text_briefing",
+      "candidate_gist": "Legacy plain-text briefing guidance may still exist in older notes and conflict with the current JSON briefing contract.",
+      "recommended_decision": "flag_conflict",
+      "resulting_status": "held",
+      "reason": "The evidence is limited and points to a direct policy conflict, so the memory should be reviewed instead of promoted automatically.",
+      "scores": {
+        "reuse_frequency": {
+          "score": 0.28,
+          "rationale": "This legacy conflict should surface rarely if the repo stays consistent."
+        },
+        "decision_impact": {
+          "score": 0.83,
+          "rationale": "If reused incorrectly, it could cause briefing automation to emit the wrong format."
+        },
+        "confidence": {
+          "score": 0.41,
+          "rationale": "The evidence comes from an older note and has not been reconfirmed."
+        },
+        "novelty_or_exceptionality": {
+          "score": 0.74,
+          "rationale": "The conflict is specific and worth tracking even though it is not well supported."
+        },
+        "explicit_user_signal": {
+          "score": 0.22,
+          "rationale": "There is no direct user request to keep or promote the legacy guidance."
+        },
+        "long_horizon_relevance": {
+          "score": 0.59,
+          "rationale": "The issue matters while legacy notes remain present, but it may disappear after cleanup."
+        }
+      },
+      "target_memory_id": "mem_conflict_plain_text_briefing",
+      "evidence_refs": [
+        {
+          "source_type": "manual_review",
+          "source_id": "legacy-briefing-note-2026-01",
+          "quote_or_summary": "Older guidance suggested plain-text briefing output in some automation paths.",
+          "observed_at": "2026-01-10T09:00:00Z",
+          "trust_level": "partially_trusted"
+        }
+      ]
+    }
+  ]
+}

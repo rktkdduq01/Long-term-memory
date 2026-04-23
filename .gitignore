@@ -1,0 +1,17 @@
+# Node / TypeScript
+node_modules/
+*.tsbuildinfo
+npm-debug.log*
+
+# Python
+__pycache__/
+*.pyc
+
+# Local memory store outputs
+.memory/*
+!.memory/.gitkeep
+
+# OS / editor noise
+.DS_Store
+.idea/workspace.xml
+.idea/vcs.xml

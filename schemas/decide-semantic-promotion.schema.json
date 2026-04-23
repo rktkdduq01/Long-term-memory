@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://long-term-memory.local/schemas/decide-semantic-promotion.schema.json",
+  "title": "Decide Semantic Promotion Output",
+  "allOf": [
+    {
+      "$ref": "./promotion-decision.schema.json"
+    }
+  ]
+}

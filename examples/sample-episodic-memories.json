@@ -1,0 +1,53 @@
+[
+  {
+    "episode_id": "ep_recent_selection_validation_failure",
+    "event_type": "validation_result",
+    "summary": "A recent selection fixture failed validation because one note lost its required evidence reference during a schema update.",
+    "status": "observed",
+    "scope_type": "repo",
+    "scope_value": "rktkdduq01/Long-term-memory",
+    "created_at": "2026-04-22T16:15:00Z",
+    "related_files": [
+      "examples/sample-selection-output.json",
+      "schemas/memory-selection.schema.json"
+    ],
+    "evidence_refs": [
+      {
+        "source_type": "test_result",
+        "source_id": "runtime-tests-2026-04-22-selection",
+        "quote_or_summary": "Selection output validation failed until the missing evidence field was restored.",
+        "observed_at": "2026-04-22T16:15:00Z",
+        "trust_level": "partially_trusted"
+      }
+    ],
+    "linked_memories": [
+      "mem_failure_fixture_drift",
+      "mem_repo_schema_rule"
+    ]
+  },
+  {
+    "episode_id": "ep_recent_user_runtime_request",
+    "event_type": "user_request",
+    "summary": "The user requested a minimal runtime and examples that can be exercised locally without external API keys.",
+    "status": "observed",
+    "scope_type": "global_user",
+    "scope_value": "rktkdduq01",
+    "created_at": "2026-04-23T08:30:00Z",
+    "related_files": [
+      "runtime/loadPrompt.ts",
+      "package.json"
+    ],
+    "evidence_refs": [
+      {
+        "source_type": "user_message",
+        "source_id": "user-turn-2026-04-23-runtime",
+        "quote_or_summary": "The runtime should be testable without external API keys.",
+        "observed_at": "2026-04-23T08:30:00Z",
+        "trust_level": "trusted"
+      }
+    ],
+    "linked_memories": [
+      "mem_user_minimal_runtime"
+    ]
+  }
+]

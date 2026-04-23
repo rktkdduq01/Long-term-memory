@@ -1,0 +1,16 @@
+{
+  "name": "long-term-memory-harness",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --experimental-strip-types runtime/runtime.test.ts tests/repository.test.ts",
+    "validate": "python3 scripts/validate_memory_harness.py && npm run typecheck && node --experimental-strip-types runtime/validateJson.ts schemas/memory-selection.schema.json runtime/samples/selection-output.json && npm test",
+    "build:briefing": "node --experimental-strip-types runtime/buildBriefing.ts --use-examples --stdout",
+    "build:candidates": "node --experimental-strip-types runtime/extractCandidates.ts --session examples/sample-session-events.json --stdout"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "typescript": "^5.9.3"
+  }
+}

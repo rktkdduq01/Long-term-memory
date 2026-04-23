@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  memory-harness-validation:
+    name: memory-harness-validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        if: ${{ hashFiles('package.json') != '' }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        if: ${{ hashFiles('package.json') != '' }}
+        run: npm install --ignore-scripts
+
+      - name: Run schema validation
+        run: python3 scripts/validate_memory_harness.py
+
+      - name: Run prompt, schema, and example tests
+        if: ${{ hashFiles('package.json') != '' }}
+        run: npm test
+
+      - name: Smoke-test local MVP CLIs
+        if: ${{ hashFiles('package.json') != '' }}
+        run: |
+          npm run build:briefing > /tmp/briefing.json
+          npm run build:candidates > /tmp/candidates.json

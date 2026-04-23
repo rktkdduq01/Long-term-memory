@@ -1,0 +1,59 @@
+{
+  "selected_semantic_ids": [
+    "mem_repo_schema_rule",
+    "mem_user_conservative_briefing"
+  ],
+  "selected_episodic_ids": [
+    "ep_recent_validation_failure"
+  ],
+  "notes": [
+    {
+      "memory_id": "mem_repo_schema_rule",
+      "memory_kind": "semantic",
+      "why_it_matters_now": "The runtime task needs prompt rendering and validation to stay aligned with the repository schemas.",
+      "relevance_to_task": 0.98,
+      "confidence": 0.95,
+      "evidence_refs": [
+        {
+          "source_type": "repo_config",
+          "source_id": "README.md",
+          "quote_or_summary": "The repository prefers schema-backed JSON for machine-readable steps.",
+          "observed_at": "2026-04-23T09:00:00Z",
+          "trust_level": "trusted"
+        }
+      ]
+    },
+    {
+      "memory_id": "mem_user_conservative_briefing",
+      "memory_kind": "semantic",
+      "why_it_matters_now": "The user preference for concise, evidence-preserving output should shape the runtime summaries.",
+      "relevance_to_task": 0.9,
+      "confidence": 0.91,
+      "evidence_refs": [
+        {
+          "source_type": "user_message",
+          "source_id": "user-turn-2026-04-23-briefing",
+          "quote_or_summary": "Keep the memory harness conservative and practical.",
+          "observed_at": "2026-04-23T09:00:00Z",
+          "trust_level": "trusted"
+        }
+      ]
+    },
+    {
+      "memory_id": "ep_recent_validation_failure",
+      "memory_kind": "episodic",
+      "why_it_matters_now": "Recent validation drift is a relevant caution while introducing runtime code.",
+      "relevance_to_task": 0.83,
+      "confidence": 0.78,
+      "evidence_refs": [
+        {
+          "source_type": "manual_review",
+          "source_id": "memory-review-2026-04-23",
+          "quote_or_summary": "Recent edits required prompt and schema corrections before validation passed.",
+          "observed_at": "2026-04-23T09:00:00Z",
+          "trust_level": "partially_trusted"
+        }
+      ]
+    }
+  ]
+}

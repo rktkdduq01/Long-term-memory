@@ -1,0 +1,14 @@
+{
+  "user_request": "Add realistic example fixtures for the memory harness and make sure the example outputs validate against the active schemas.",
+  "task_metadata": {
+    "task_type": "example_fixture_maintenance",
+    "repo": "rktkdduq01/Long-term-memory",
+    "branch": "main",
+    "risk_level": "medium",
+    "needs_schema_validation": true,
+    "notes": [
+      "Keep the examples conservative and machine-applicable.",
+      "Do not rely on external APIs or secrets."
+    ]
+  }
+}

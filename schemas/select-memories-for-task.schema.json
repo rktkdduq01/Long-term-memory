@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://long-term-memory.local/schemas/select-memories-for-task.schema.json",
+  "title": "Select Memories For Task Output",
+  "allOf": [
+    {
+      "$ref": "./memory-selection.schema.json"
+    }
+  ]
+}
