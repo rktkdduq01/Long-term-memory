@@ -2,34 +2,42 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
 import { createMemoryConfig } from '../config/memoryConfig.ts';
-import type { MemoryCandidate, MemoryMode, SessionEventRecord } from '../contracts/types.ts';
+import type { MemoryCandidate, MemoryKind, MemoryMode, MemoryType, SessionEventRecord } from '../contracts/types.ts';
 import { assertValidCandidate } from '../contracts/validateCandidate.ts';
 import { attachConflicts } from '../retrieval/detectConflicts.ts';
 import { readAllMemories } from '../store/memoryStore.ts';
-import { appendPendingCandidates } from '../store/candidateStore.ts';
+import { appendPendingCandidates, type AppendPendingCandidatesResult } from '../store/candidateStore.ts';
 import { readSessionEvents } from '../store/sessionStore.ts';
 import { sampleCandidates } from '../reference/sampleCandidates.ts';
 import { sampleSessionEvents } from '../reference/sampleBriefing.ts';
+import { parseCliArgs } from './parseArgs.ts';
 
 export interface GenerateMemoryCandidatesOptions {
+  harnessRoot?: string;
+  projectRoot?: string;
   repoRoot?: string;
   memoryDir?: string;
   mode?: MemoryMode;
+  repoScope?: string;
   sessionPath?: string;
   dryRun?: boolean;
+  replacePending?: boolean;
   now?: Date;
+}
+
+export interface GenerateMemoryCandidatesResult extends AppendPendingCandidatesResult {
+  generated: MemoryCandidate[];
 }
 
 function candidateIdForEvent(event: SessionEventRecord): string {
   return `cand_${event.event_id.replace(/^evt_/, '')}`;
 }
 
-function scopeForEvent(event: SessionEventRecord): Pick<MemoryCandidate, 'scope_type' | 'scope_value' | 'target_kind'> {
+function scopeForEvent(event: SessionEventRecord, repoScope: string): Pick<MemoryCandidate, 'scope_type' | 'scope_value'> {
   if (event.related_files.length === 1) {
     return {
       scope_type: 'file',
       scope_value: event.related_files[0],
-      target_kind: 'project',
     };
   }
 
@@ -40,15 +48,13 @@ function scopeForEvent(event: SessionEventRecord): Pick<MemoryCandidate, 'scope_
       return {
         scope_type: 'directory',
         scope_value: `${directories[0]}/`,
-        target_kind: 'project',
       };
     }
   }
 
   return {
     scope_type: 'repo',
-    scope_value: 'rktkdduq01/Long-term-memory',
-    target_kind: event.event_type === 'decision' ? 'procedural' : 'semantic',
+    scope_value: repoScope,
   };
 }
 
@@ -68,6 +74,24 @@ function memoryTypeForEvent(event: SessionEventRecord): MemoryCandidate['memory_
   }
 }
 
+function targetKindForMemoryType(memoryType: MemoryType): MemoryKind {
+  switch (memoryType) {
+    case 'project_constraint':
+    case 'unresolved_risk':
+      return 'project';
+    case 'procedure':
+    case 'success_pattern':
+    case 'failure_lesson':
+      return 'procedural';
+    case 'user_preference':
+    case 'repo_rule':
+    case 'session_fact':
+      return 'semantic';
+    case 'approval_boundary':
+      return 'project';
+  }
+}
+
 function scoreForTrust(trustLevel: SessionEventRecord['trust_level']): number {
   switch (trustLevel) {
     case 'trusted':
@@ -79,18 +103,19 @@ function scoreForTrust(trustLevel: SessionEventRecord['trust_level']): number {
   }
 }
 
-function eventToCandidate(event: SessionEventRecord, now: Date): MemoryCandidate | null {
+function eventToCandidate(event: SessionEventRecord, now: Date, repoScope: string): MemoryCandidate | null {
   if (!['user_request', 'error', 'validation_result', 'decision', 'review_feedback'].includes(event.event_type)) {
     return null;
   }
 
-  const scope = scopeForEvent(event);
+  const scope = scopeForEvent(event, repoScope);
+  const memoryType = memoryTypeForEvent(event);
   const confidence = scoreForTrust(event.trust_level);
 
   const candidate: MemoryCandidate = {
     candidate_id: candidateIdForEvent(event),
-    target_kind: scope.target_kind,
-    memory_type: memoryTypeForEvent(event),
+    target_kind: targetKindForMemoryType(memoryType),
+    memory_type: memoryType,
     gist: event.summary,
     fact_or_inference: event.event_type === 'review_feedback' || event.event_type === 'decision' ? 'inference' : 'fact',
     status: 'pending',
@@ -122,20 +147,33 @@ function eventToCandidate(event: SessionEventRecord, now: Date): MemoryCandidate
   return candidate;
 }
 
-export async function generateMemoryCandidates(options?: GenerateMemoryCandidatesOptions): Promise<MemoryCandidate[]> {
+function emptyAppendResult(): AppendPendingCandidatesResult {
+  return {
+    appended: [],
+    replaced: [],
+    skipped: [],
+  };
+}
+
+export async function generateMemoryCandidatesWithReport(
+  options?: GenerateMemoryCandidatesOptions,
+): Promise<GenerateMemoryCandidatesResult> {
   const mode = options?.mode ?? 'strict';
   const now = options?.now ?? new Date();
   const config = createMemoryConfig({
+    harnessRoot: options?.harnessRoot,
+    projectRoot: options?.projectRoot,
     repoRoot: options?.repoRoot,
     memoryDir: options?.memoryDir,
     mode,
+    repoScope: options?.repoScope,
   });
   const events = mode === 'demo' ? sampleSessionEvents : await readSessionEvents(config, options?.sessionPath);
   const existingMemories = mode === 'demo' ? [] : await readAllMemories(config);
   const generated = mode === 'demo'
     ? sampleCandidates
     : events
-        .map((event) => eventToCandidate(event, now))
+        .map((event) => eventToCandidate(event, now, config.repoScope))
         .filter((candidate): candidate is MemoryCandidate => candidate !== null)
         .map((candidate) => attachConflicts(candidate, existingMemories));
   const validated: MemoryCandidate[] = [];
@@ -144,50 +182,92 @@ export async function generateMemoryCandidates(options?: GenerateMemoryCandidate
     validated.push(await assertValidCandidate(candidate, config.repoRoot));
   }
 
-  if (mode !== 'demo' && options?.dryRun !== true) {
-    await appendPendingCandidates(config, validated);
+  if (mode === 'demo' || options?.dryRun === true) {
+    return {
+      generated: validated,
+      ...emptyAppendResult(),
+    };
   }
 
-  return validated;
+  const appendResult = await appendPendingCandidates(config, validated, {
+    replacePending: options?.replacePending,
+  });
+
+  return {
+    generated: validated,
+    ...appendResult,
+  };
 }
 
-function parseArgs(argv: string[]) {
-  const parsed: {
-    demo: boolean;
-    dryRun: boolean;
-    sessionPath?: string;
-    memoryDir?: string;
-  } = {
-    demo: false,
-    dryRun: false,
-  };
+export async function generateMemoryCandidates(options?: GenerateMemoryCandidatesOptions): Promise<MemoryCandidate[]> {
+  const result = await generateMemoryCandidatesWithReport(options);
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
-
-    if (argument === '--demo') {
-      parsed.demo = true;
-    } else if (argument === '--dry-run') {
-      parsed.dryRun = true;
-    } else if (argument === '--session') {
-      parsed.sessionPath = argv[index + 1];
-      index += 1;
-    } else if (argument === '--memory-dir') {
-      parsed.memoryDir = argv[index + 1];
-      index += 1;
-    }
+  if ((options?.mode ?? 'strict') === 'demo' || options?.dryRun === true) {
+    return result.generated;
   }
 
-  return parsed;
+  return result.appended;
+}
+
+export interface MemoryCandidatesCliArgs {
+  demo: boolean;
+  dryRun: boolean;
+  replacePending: boolean;
+  report: boolean;
+  sessionPath?: string;
+  memoryDir?: string;
+  projectRoot?: string;
+  harnessRoot?: string;
+  repoScope?: string;
+}
+
+type MemoryCandidatesCliKey = keyof MemoryCandidatesCliArgs;
+
+export function parseMemoryCandidatesArgs(argv: string[]): MemoryCandidatesCliArgs {
+  const parsed = parseCliArgs<MemoryCandidatesCliKey>(argv, {
+    booleanFlags: [
+      { flag: '--demo', key: 'demo' },
+      { flag: '--dry-run', key: 'dryRun' },
+      { flag: '--replace-pending', key: 'replacePending' },
+      { flag: '--report', key: 'report' },
+    ],
+    stringOptions: [
+      { flag: '--session', key: 'sessionPath' },
+      { flag: '--memory-dir', key: 'memoryDir' },
+      { flag: '--project-root', key: 'projectRoot' },
+      { flag: '--harness-root', key: 'harnessRoot' },
+      { flag: '--repo', key: 'repoScope' },
+      { flag: '--repo-scope', key: 'repoScope' },
+    ],
+  });
+
+  return {
+    demo: parsed.demo === true,
+    dryRun: parsed.dryRun === true,
+    replacePending: parsed.replacePending === true,
+    report: parsed.report === true,
+    sessionPath: parsed.sessionPath as string | undefined,
+    memoryDir: parsed.memoryDir as string | undefined,
+    projectRoot: parsed.projectRoot as string | undefined,
+    harnessRoot: parsed.harnessRoot as string | undefined,
+    repoScope: parsed.repoScope as string | undefined,
+  };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = parseArgs(process.argv.slice(2));
-  const candidates = await generateMemoryCandidates({
+  const args = parseMemoryCandidatesArgs(process.argv.slice(2));
+  const options = {
     mode: args.demo ? 'demo' : 'strict',
     sessionPath: args.sessionPath,
     dryRun: args.dryRun,
+    replacePending: args.replacePending,
+    harnessRoot: args.harnessRoot,
+    projectRoot: args.projectRoot,
     memoryDir: args.memoryDir,
-  });
-  process.stdout.write(`${JSON.stringify(candidates, null, 2)}\n`);
+    repoScope: args.repoScope,
+  } satisfies GenerateMemoryCandidatesOptions;
+  const output = args.report
+    ? await generateMemoryCandidatesWithReport(options)
+    : await generateMemoryCandidates(options);
+  process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 }

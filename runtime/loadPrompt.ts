@@ -10,10 +10,15 @@ export interface LoadedPrompt {
   combinedPrompt: string;
 }
 
-const DEFAULT_REPO_ROOT = fileURLToPath(new URL('../', import.meta.url));
+const DEFAULT_HARNESS_ROOT = fileURLToPath(new URL('../', import.meta.url));
+
+export function getHarnessRoot(explicitRoot?: string): string {
+  const configuredRoot = explicitRoot ?? process.env.MEMORY_HARNESS_ROOT;
+  return resolve(configuredRoot?.trim() || DEFAULT_HARNESS_ROOT);
+}
 
 export function getRepoRoot(): string {
-  return DEFAULT_REPO_ROOT;
+  return getHarnessRoot();
 }
 
 function normalizeTaskPromptName(taskPrompt: string): string {
@@ -39,9 +44,9 @@ function resolvePromptPath(taskPrompt: string, repoRoot: string): string {
   return candidatePath;
 }
 
-export async function loadPrompt(taskPrompt: string, repoRoot = getRepoRoot()): Promise<LoadedPrompt> {
-  const basePromptPath = resolve(repoRoot, 'prompts/base-memory-harness.md');
-  const taskPromptPath = resolvePromptPath(taskPrompt, repoRoot);
+export async function loadPrompt(taskPrompt: string, harnessRoot = getHarnessRoot()): Promise<LoadedPrompt> {
+  const basePromptPath = resolve(harnessRoot, 'prompts/base-memory-harness.md');
+  const taskPromptPath = resolvePromptPath(taskPrompt, harnessRoot);
 
   if (taskPromptPath === basePromptPath) {
     throw new Error('Task prompt must not be prompts/base-memory-harness.md.');
@@ -68,7 +73,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     console.error('Usage: node --experimental-strip-types runtime/loadPrompt.ts <task-prompt>');
     process.exitCode = 1;
   } else {
-    const loadedPrompt = await loadPrompt(taskPrompt, DEFAULT_REPO_ROOT);
+    const loadedPrompt = await loadPrompt(taskPrompt, getHarnessRoot());
     process.stdout.write(loadedPrompt.combinedPrompt);
   }
 }

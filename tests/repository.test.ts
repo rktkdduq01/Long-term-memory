@@ -4,6 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 
 import { BRIEFING_MAX_ITEMS, BRIEFING_MAX_WORDS, MEMORY_STORE_FILES, SCORE_MAX, SCORE_MIN } from '../runtime/contracts/constants.ts';
+import { sampleApprovalReview } from '../runtime/reference/sampleApprovalReview.ts';
 import { sampleCandidates } from '../runtime/reference/sampleCandidates.ts';
 import { sampleMemories, sampleSessionEvents, sampleTask } from '../runtime/reference/sampleBriefing.ts';
 import { getRepoRoot } from '../runtime/loadPrompt.ts';
@@ -12,8 +13,10 @@ import { validateJson } from '../runtime/validateJson.ts';
 const repoRoot = getRepoRoot();
 const promptsDir = resolve(repoRoot, 'prompts');
 const schemasDir = resolve(repoRoot, 'schemas');
+const memoryExampleDir = resolve(repoRoot, '.memory.example');
 const agentsPath = resolve(repoRoot, 'AGENTS.md');
 const readmePath = resolve(repoRoot, 'README.md');
+const schemasReadmePath = resolve(repoRoot, 'schemas/README.md');
 const packagePath = resolve(repoRoot, 'package.json');
 
 const EXPECTED_PROMPTS = [
@@ -27,6 +30,7 @@ const EXPECTED_PROMPTS = [
 
 const EXPECTED_SCHEMAS = [
   'approval-event.schema.json',
+  'approval-review.schema.json',
   'briefing.schema.json',
   'memory-candidate.schema.json',
   'memory.schema.json',
@@ -57,6 +61,71 @@ const PROMPT_PLACEHOLDERS: Record<string, string[]> = {
   ],
 };
 
+const SUPPORTED_LOCAL_SCHEMA_KEYWORDS = [
+  '$ref',
+  'allOf',
+  'if',
+  'then',
+  'else',
+  'type',
+  'const',
+  'enum',
+  'required',
+  'additionalProperties: false',
+  'properties',
+  'items',
+  'minLength',
+  'maxLength',
+  'minimum',
+  'maximum',
+  'minItems',
+  'maxItems',
+  'uniqueItems',
+  'format: date-time',
+] as const;
+
+const SUPPORTED_LOCAL_SCHEMA_KEYWORD_NAMES = new Set(
+  SUPPORTED_LOCAL_SCHEMA_KEYWORDS.map((keyword) => keyword.split(':')[0]),
+);
+
+const LOCAL_SCHEMA_METADATA_KEYWORDS = new Set(['$schema', '$id', 'title', '$defs']);
+const LOCAL_SCHEMA_ALLOWED_KEYWORDS = new Set([
+  ...SUPPORTED_LOCAL_SCHEMA_KEYWORD_NAMES,
+  ...LOCAL_SCHEMA_METADATA_KEYWORDS,
+]);
+
+const UNSUPPORTED_LOCAL_SCHEMA_KEYWORDS = [
+  'oneOf',
+  'anyOf',
+  'not',
+  'pattern',
+  'patternProperties',
+  'dependentRequired',
+  'unevaluatedProperties',
+] as const;
+
+const MEMORY_EXAMPLE_SCHEMA_BY_FILE: Record<string, string> = {
+  'semantic-memories.jsonl': 'memory.schema.json',
+  'episodic-memories.jsonl': 'memory.schema.json',
+  'procedural-memories.jsonl': 'memory.schema.json',
+  'project-memories.jsonl': 'memory.schema.json',
+  'candidates/pending.jsonl': 'memory-candidate.schema.json',
+  'candidates/approved.jsonl': 'memory-candidate.schema.json',
+  'candidates/rejected.jsonl': 'memory-candidate.schema.json',
+  'sessions/latest.jsonl': 'session-event.schema.json',
+  'audit/memory-events.jsonl': 'approval-event.schema.json',
+};
+
+const SENSITIVE_EXAMPLE_PATTERNS = [
+  { name: 'API key', pattern: /\b(?:api[_-]?key|access[_-]?key|secret[_-]?key)\s*[:=]/i },
+  { name: 'bearer token', pattern: /\bbearer\s+[a-z0-9._-]{16,}/i },
+  { name: 'OpenAI-style key', pattern: /\bsk-[a-z0-9_-]{16,}/i },
+  { name: 'password assignment', pattern: /\bpassword\s*[:=]/i },
+  { name: 'private key block', pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/i },
+  { name: 'user-specific Windows path', pattern: /\/mnt\/c\/Users\/[^/\s"]+/i },
+  { name: 'user-specific home path', pattern: /\/home\/[^/\s"]+/i },
+];
+
 function extractPromptPathsFromAgents(content: string): string[] {
   return [...content.matchAll(/`(prompts\/[^`]+\.md)`/g)].map((match) => match[1]);
 }
@@ -67,6 +136,88 @@ function extractPlaceholders(content: string): string[] {
 
 async function readJsonFile<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, 'utf8')) as T;
+}
+
+function parseJsonlLines(path: string, content: string): unknown[] {
+  const records: unknown[] = [];
+
+  for (const [index, line] of content.split(/\r?\n/).entries()) {
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      continue;
+    }
+
+    try {
+      records.push(JSON.parse(trimmed) as unknown);
+    } catch (error) {
+      assert.fail(`${path}:${index + 1}: invalid JSONL record: ${(error as Error).message}`);
+    }
+  }
+
+  return records;
+}
+
+function findUnsupportedSchemaKeywords(schemaFile: string, value: unknown, path = '$'): string[] {
+  if (typeof value === 'boolean') {
+    return [];
+  }
+
+  if (typeof value !== 'object' || value === null) {
+    return [`${schemaFile} ${path}: schema node must be an object or boolean`];
+  }
+
+  const errors: string[] = [];
+  const record = value as Record<string, unknown>;
+
+  for (const [key, nestedValue] of Object.entries(record)) {
+    const nestedPath = `${path}/${key}`;
+
+    if (!LOCAL_SCHEMA_ALLOWED_KEYWORDS.has(key)) {
+      errors.push(`${schemaFile} ${nestedPath}: unsupported local validator keyword "${key}"`);
+      continue;
+    }
+
+    if (key === 'additionalProperties' && nestedValue !== false) {
+      errors.push(`${schemaFile} ${nestedPath}: unsupported local validator keyword "additionalProperties" value; only false is enforced`);
+      continue;
+    }
+
+    if (key === 'format' && nestedValue !== 'date-time') {
+      errors.push(`${schemaFile} ${nestedPath}: unsupported local validator keyword "format" value "${String(nestedValue)}"`);
+      continue;
+    }
+
+    if (key === 'allOf') {
+      if (!Array.isArray(nestedValue)) {
+        errors.push(`${schemaFile} ${nestedPath}: unsupported local validator keyword "allOf" value; expected an array`);
+        continue;
+      }
+
+      for (const [index, nestedSchema] of nestedValue.entries()) {
+        errors.push(...findUnsupportedSchemaKeywords(schemaFile, nestedSchema, `${nestedPath}/${index}`));
+      }
+      continue;
+    }
+
+    if (key === 'properties' || key === '$defs') {
+      if (typeof nestedValue !== 'object' || nestedValue === null || Array.isArray(nestedValue)) {
+        errors.push(`${schemaFile} ${nestedPath}: unsupported local validator keyword "${key}" value; expected an object`);
+        continue;
+      }
+
+      for (const [schemaName, nestedSchema] of Object.entries(nestedValue)) {
+        errors.push(...findUnsupportedSchemaKeywords(schemaFile, nestedSchema, `${nestedPath}/${schemaName}`));
+      }
+      continue;
+    }
+
+    if (key === 'if' || key === 'then' || key === 'else' || key === 'items') {
+      errors.push(...findUnsupportedSchemaKeywords(schemaFile, nestedValue, nestedPath));
+    }
+  }
+
+  return errors;
 }
 
 test('prompt and schema inventories match the local-only contract', async () => {
@@ -101,6 +252,9 @@ test('README states the local-only product boundary and JSONL store layout', asy
     'require network access',
     'Permanent memory is never written automatically',
     'Demo mode is available only when explicitly requested',
+    '`.memory.example/` contains safe fake JSONL fixtures',
+    'cp -R .memory.example .memory',
+    '`.memory/` itself should stay local-only and uncommitted',
   ]) {
     assert.match(readme, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
@@ -133,6 +287,84 @@ test('canonical schema files parse and use strict root object contracts', async 
     assert.equal(schema.type, 'object');
     assert.equal(schema.additionalProperties, false);
     assert.ok(Array.isArray(schema.required));
+  }
+});
+
+test('.memory.example JSONL fixtures validate and demonstrate local-only usage', async () => {
+  const recordsByFile = new Map<string, unknown[]>();
+
+  for (const [fixturePath, schemaFile] of Object.entries(MEMORY_EXAMPLE_SCHEMA_BY_FILE)) {
+    const absolutePath = resolve(memoryExampleDir, fixturePath);
+    const content = await readFile(absolutePath, 'utf8');
+    const records = parseJsonlLines(fixturePath, content);
+
+    recordsByFile.set(fixturePath, records);
+    assert.ok(records.length > 0, `${fixturePath} should include at least one safe demo record`);
+
+    for (const [index, record] of records.entries()) {
+      const result = await validateJson(record, resolve(schemasDir, schemaFile));
+      assert.equal(result.valid, true, `${fixturePath}:${index + 1}: ${result.errors.join('; ')}`);
+    }
+  }
+
+  const projectMemories = recordsByFile.get('project-memories.jsonl') as Array<Record<string, unknown>>;
+  assert.ok(
+    projectMemories.some((memory) => (
+      typeof memory.gist === 'string'
+      && /local-only/i.test(memory.gist)
+      && /server/i.test(memory.gist)
+      && /MCP/i.test(memory.gist)
+    )),
+    'project-memories.jsonl should include a local-only no-server/no-MCP project memory',
+  );
+
+  const pendingCandidates = recordsByFile.get('candidates/pending.jsonl') as Array<Record<string, unknown>>;
+  assert.ok(
+    pendingCandidates.some((candidate) => candidate.status === 'pending'),
+    'candidates/pending.jsonl should include a pending candidate example',
+  );
+});
+
+test('.memory.example fixtures contain only safe public demo data', async () => {
+  for (const fixturePath of Object.keys(MEMORY_EXAMPLE_SCHEMA_BY_FILE)) {
+    const absolutePath = resolve(memoryExampleDir, fixturePath);
+    const content = await readFile(absolutePath, 'utf8');
+
+    for (const { name, pattern } of SENSITIVE_EXAMPLE_PATTERNS) {
+      assert.doesNotMatch(content, pattern, `${fixturePath} should not contain ${name}`);
+    }
+
+    for (const [index, record] of parseJsonlLines(fixturePath, content).entries()) {
+      if (typeof record === 'object' && record !== null && 'sensitivity' in record) {
+        assert.equal((record as Record<string, unknown>).sensitivity, 'public', `${fixturePath}:${index + 1} should use public sensitivity`);
+      }
+    }
+  }
+});
+
+test('schema docs describe the local validator subset and schemas avoid unsupported keywords', async () => {
+  const schemasReadme = await readFile(schemasReadmePath, 'utf8');
+
+  assert.match(schemasReadme, /local, dependency-light subset/i);
+  assert.match(schemasReadme, /must not assume unsupported draft 2020-12 keywords are enforced/i);
+
+  for (const keyword of SUPPORTED_LOCAL_SCHEMA_KEYWORDS) {
+    assert.ok(schemasReadme.includes(keyword), `schemas/README.md should document supported keyword ${keyword}`);
+  }
+
+  for (const keyword of UNSUPPORTED_LOCAL_SCHEMA_KEYWORDS) {
+    assert.ok(schemasReadme.includes(keyword), `schemas/README.md should document unsupported keyword ${keyword}`);
+  }
+
+  for (const keyword of LOCAL_SCHEMA_METADATA_KEYWORDS) {
+    assert.ok(schemasReadme.includes(keyword), `schemas/README.md should document metadata keyword ${keyword}`);
+  }
+
+  for (const schemaFile of EXPECTED_SCHEMAS) {
+    const schema = await readJsonFile<Record<string, unknown>>(resolve(schemasDir, schemaFile));
+    const unsupportedKeywordErrors = findUnsupportedSchemaKeywords(schemaFile, schema);
+
+    assert.deepEqual(unsupportedKeywordErrors, [], unsupportedKeywordErrors.join('\n'));
   }
 });
 
@@ -172,6 +404,9 @@ test('reference samples validate against canonical schemas', async () => {
 
   const taskResult = await validateJson(sampleTask, resolve(schemasDir, 'task.schema.json'));
   assert.equal(taskResult.valid, true, taskResult.errors.join('; '));
+
+  const approvalReviewResult = await validateJson(sampleApprovalReview, resolve(schemasDir, 'approval-review.schema.json'));
+  assert.equal(approvalReviewResult.valid, true, approvalReviewResult.errors.join('; '));
 });
 
 test('package scripts expose local Codex CLI entrypoints without server dependencies', async () => {

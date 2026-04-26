@@ -3,8 +3,11 @@ import { resolve } from 'node:path';
 
 import { createMemoryConfig } from '../config/memoryConfig.ts';
 import { rejectCandidate } from '../store/candidateStore.ts';
+import { parseCliArgs } from './parseArgs.ts';
 
 export interface MemoryRejectOptions {
+  harnessRoot?: string;
+  projectRoot?: string;
   repoRoot?: string;
   memoryDir?: string;
   candidateId: string;
@@ -14,6 +17,8 @@ export interface MemoryRejectOptions {
 
 export async function rejectMemoryCandidate(options: MemoryRejectOptions) {
   const config = createMemoryConfig({
+    harnessRoot: options.harnessRoot,
+    projectRoot: options.projectRoot,
     repoRoot: options.repoRoot,
     memoryDir: options.memoryDir,
     mode: 'strict',
@@ -26,41 +31,54 @@ export async function rejectMemoryCandidate(options: MemoryRejectOptions) {
   });
 }
 
-function parseArgs(argv: string[]) {
-  const parsed: {
-    candidateId?: string;
-    reason?: string;
-    memoryDir?: string;
-  } = {};
+export interface MemoryRejectCliArgs {
+  candidateId: string;
+  reason: string;
+  memoryDir?: string;
+  projectRoot?: string;
+  harnessRoot?: string;
+}
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
+type MemoryRejectCliKey = keyof MemoryRejectCliArgs;
 
-    if (argument === '--candidate') {
-      parsed.candidateId = argv[index + 1];
-      index += 1;
-    } else if (argument === '--reason') {
-      parsed.reason = argv[index + 1];
-      index += 1;
-    } else if (argument === '--memory-dir') {
-      parsed.memoryDir = argv[index + 1];
-      index += 1;
-    }
-  }
+export function parseMemoryRejectArgs(argv: string[]): MemoryRejectCliArgs {
+  const parsed = parseCliArgs<MemoryRejectCliKey>(argv, {
+    stringOptions: [
+      { flag: '--candidate', key: 'candidateId' },
+      { flag: '--reason', key: 'reason' },
+      { flag: '--memory-dir', key: 'memoryDir' },
+      { flag: '--project-root', key: 'projectRoot' },
+      { flag: '--harness-root', key: 'harnessRoot' },
+    ],
+    required: [
+      {
+        key: 'candidateId',
+        message: 'memory:reject requires --candidate <candidate_id>.',
+      },
+      {
+        key: 'reason',
+        message: 'memory:reject requires --reason <reason>; reason must be non-empty.',
+      },
+    ],
+  });
 
-  return parsed;
+  return {
+    candidateId: parsed.candidateId as string,
+    reason: parsed.reason as string,
+    memoryDir: parsed.memoryDir as string | undefined,
+    projectRoot: parsed.projectRoot as string | undefined,
+    harnessRoot: parsed.harnessRoot as string | undefined,
+  };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = parseArgs(process.argv.slice(2));
-
-  if (!args.candidateId) {
-    throw new Error('memory:reject requires --candidate <candidate_id>.');
-  }
+  const args = parseMemoryRejectArgs(process.argv.slice(2));
 
   const result = await rejectMemoryCandidate({
     candidateId: args.candidateId,
-    reason: args.reason ?? 'User explicitly rejected this memory candidate.',
+    reason: args.reason,
+    harnessRoot: args.harnessRoot,
+    projectRoot: args.projectRoot,
     memoryDir: args.memoryDir,
   });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

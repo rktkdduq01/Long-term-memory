@@ -70,6 +70,40 @@ The harness uses these local JSONL files:
 
 `.memory/` is ignored by git except for `.memory/.gitkeep`. Do not commit real memories, private logs, secrets, credentials, tokens, private keys, or sensitive personal data.
 
+## Example Store
+
+`.memory.example/` contains safe fake JSONL fixtures that demonstrate the local-only layout, including project memory that avoids server and MCP-server direction and a pending candidate that still requires approval.
+
+For local testing, copy the example store into the ignored runtime store:
+
+```bash
+cp -R .memory.example .memory
+npm run memory:validate
+```
+
+Commit `.memory.example/` when fixture contracts change. `.memory/` itself should stay local-only and uncommitted because it may contain real user, project, or session memory.
+
+## Root Configuration
+
+The runtime separates the harness source root from the host project root:
+
+- `harnessRoot`: where `prompts/`, `schemas/`, and `runtime/` live
+- `projectRoot`: where the local `.memory/` store lives
+
+By default both roots point at this repository, which keeps existing in-repo usage unchanged. When vendoring or using the harness from another project, set the host project root explicitly:
+
+```bash
+npm run memory:briefing -- --project-root /path/to/project --request "Refactor local memory" --repo owner/repo
+```
+
+Environment variables are supported:
+
+- `MEMORY_HARNESS_ROOT`: prompt/schema/runtime root
+- `MEMORY_PROJECT_ROOT`: host project root for `.memory/`
+- `MEMORY_REPO_SCOPE`: default repository scope for raw request and candidate generation
+
+CLI flags override environment variables. Relative `--memory-dir` values are resolved from the project root.
+
 ## Modes
 
 Strict local mode is the default. It reads only local task/session inputs and `.memory/` JSONL stores. Missing local memory files are treated as empty stores. Broken JSONL files fail loudly with file and line context.
@@ -91,6 +125,32 @@ Build a task briefing from local approved memory:
 npm run memory:briefing -- --task task.json
 ```
 
+Build a task briefing directly from raw request text:
+
+```bash
+npm run memory:briefing -- \
+  --request "Refactor this harness" \
+  --repo rktkdduq01/Long-term-memory
+```
+
+`memory:briefing` supports task files and raw request mode:
+
+- `--task <path>`
+- `--request <text>`
+- `--repo <repo>`
+- `--scope-type <scope_type>`
+- `--scope-value <scope_value>`
+
+Raw request mode also accepts `--branch <branch>`.
+
+When `--request` is used, `repo` defaults to `MEMORY_REPO_SCOPE` if configured, then `"local"`. `scope_type` defaults to `"repo"` and `scope_value` defaults to the resolved repo. Task JSON files remain authoritative; CLI scope flags do not override fields loaded with `--task`.
+
+Configure a default repository scope for local commands:
+
+```bash
+MEMORY_REPO_SCOPE=rktkdduq01/Long-term-memory npm run memory:briefing -- --request "Refactor memory briefing"
+```
+
 Search approved local memory:
 
 ```bash
@@ -100,15 +160,27 @@ npm run memory:search -- --query "schema validation"
 Generate pending candidates from the latest local session JSONL:
 
 ```bash
-npm run memory:candidates
+npm run memory:candidates -- \
+  --repo rktkdduq01/Long-term-memory
 ```
+
+`memory:candidates` accepts `--repo <repo>` for repo-scoped candidate fallback. `--repo-scope <repo>` is also supported as an explicit alias. If the CLI option is omitted, candidate generation uses `MEMORY_REPO_SCOPE` and then the safe `"local"` fallback for repo-scoped candidates.
+
+Candidate generation skips duplicate `candidate_id` values already present in pending, approved, or rejected queues. Use `--replace-pending` only when you intentionally want to replace an existing pending candidate; approved and rejected candidates are never replaced. Use `--report` to include appended, replaced, and skipped candidates in the CLI output.
 
 Approve or reject a pending candidate:
 
 ```bash
-npm run memory:approve -- --candidate cand_123 --reason "User approved this durable rule."
-npm run memory:reject -- --candidate cand_456 --reason "Too task-specific."
+npm run memory:approve -- \
+  --candidate cand_123 \
+  --reason "User approved this durable project rule."
+
+npm run memory:reject -- \
+  --candidate cand_456 \
+  --reason "Too task-specific."
 ```
+
+Approval requires both `--candidate <candidate_id>` and `--reason <reason>`. Rejection requires both `--candidate <candidate_id>` and `--reason <reason>`. The CLI does not create fallback audit reasons.
 
 Run fake demo data explicitly:
 
@@ -135,6 +207,7 @@ The canonical schemas are:
 - `schemas/memory.schema.json`
 - `schemas/memory-candidate.schema.json`
 - `schemas/briefing.schema.json`
+- `schemas/approval-review.schema.json`
 - `schemas/approval-event.schema.json`
 
 Shared contract constants live in `runtime/contracts/constants.ts`:

@@ -60,8 +60,7 @@
       "$ref": "./memory.schema.json#/$defs/sourceTrustLevel"
     },
     "metadata": {
-      "type": "object",
-      "additionalProperties": true
+      "type": "object"
     }
   }
 }

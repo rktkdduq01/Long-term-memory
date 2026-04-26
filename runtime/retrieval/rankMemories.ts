@@ -2,6 +2,7 @@ import { BRIEFING_MAX_ITEMS } from '../contracts/constants.ts';
 import type { BriefingCategory, MemoryRecord, TaskInput } from '../contracts/types.ts';
 import { scopeScore } from './filterByScope.ts';
 import { scoreEvidence } from './scoreEvidence.ts';
+import { memoryLexicalScore } from './lexicalScore.ts';
 
 export interface RankedMemory {
   memory: MemoryRecord;
@@ -38,8 +39,11 @@ export function rankMemories(task: TaskInput, memories: MemoryRecord[], limit = 
     .filter((memory) => memory.status === 'active')
     .map((memory) => {
       const scope = scopeScore(task, memory.scope_type, memory.scope_value);
+      const lexical = memoryLexicalScore(task, memory);
       const evidence = scoreEvidence(memory.evidence_refs);
-      const relevance = clampScore(scope * 0.45 + memory.confidence * 0.25 + memory.importance * 0.2 + evidence * 0.1);
+      const relevance = clampScore(
+        scope * 0.3 + lexical * 0.3 + memory.confidence * 0.15 + memory.importance * 0.15 + evidence * 0.1,
+      );
 
       return {
         memory,

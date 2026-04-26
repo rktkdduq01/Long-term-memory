@@ -7,16 +7,20 @@ import type { TaskInput } from '../contracts/types.ts';
 
 export function normalizeTask(input: Partial<TaskInput> & { user_request: string }): TaskInput {
   const repo = input.repo ?? 'local';
-
-  return {
+  const task: TaskInput = {
     task_id: input.task_id ?? `task_${Date.now()}`,
     user_request: input.user_request,
     repo,
-    branch: input.branch,
     scope_type: input.scope_type ?? 'repo',
     scope_value: input.scope_value ?? repo,
     metadata: input.metadata ?? {},
   };
+
+  if (input.branch) {
+    task.branch = input.branch;
+  }
+
+  return task;
 }
 
 export async function assertValidTask(task: unknown, repoRoot = getRepoRoot()): Promise<TaskInput> {
@@ -29,7 +33,12 @@ export async function assertValidTask(task: unknown, repoRoot = getRepoRoot()): 
   return task as TaskInput;
 }
 
-export async function loadTaskFromPath(path: string, repoRoot = getRepoRoot()): Promise<TaskInput> {
-  const parsed = JSON.parse(await readFile(resolve(repoRoot, path), 'utf8')) as unknown;
-  return assertValidTask(parsed, repoRoot);
+export async function loadTaskFromPath(
+  path: string,
+  repoRoot: string | undefined = getRepoRoot(),
+  taskRoot?: string,
+): Promise<TaskInput> {
+  const schemaRoot = repoRoot ?? getRepoRoot();
+  const parsed = JSON.parse(await readFile(resolve(taskRoot ?? schemaRoot, path), 'utf8')) as unknown;
+  return assertValidTask(parsed, schemaRoot);
 }

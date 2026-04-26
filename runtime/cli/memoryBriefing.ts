@@ -3,21 +3,31 @@ import { resolve } from 'node:path';
 
 import { createMemoryConfig } from '../config/memoryConfig.ts';
 import { BRIEFING_MAX_ITEMS, BRIEFING_MAX_WORDS } from '../contracts/constants.ts';
-import type { Briefing, BriefingItem, MemoryMode, MemoryRecord, TaskInput } from '../contracts/types.ts';
+import type { Briefing, BriefingItem, MemoryMode, MemoryRecord, ScopeType, TaskInput } from '../contracts/types.ts';
 import { assertValidBriefing } from '../contracts/validateBriefing.ts';
 import { readAllMemories } from '../store/memoryStore.ts';
-import { loadTaskFromPath, normalizeTask } from '../retrieval/normalizeTask.ts';
-import { rankMemories } from '../retrieval/rankMemories.ts';
+import { assertValidTask, loadTaskFromPath, normalizeTask } from '../retrieval/normalizeTask.ts';
+import { type RankedMemory, rankMemories } from '../retrieval/rankMemories.ts';
 import { sampleMemories, sampleTask } from '../reference/sampleBriefing.ts';
+import { parseCliArgs } from './parseArgs.ts';
 
 export interface BuildMemoryBriefingOptions {
+  harnessRoot?: string;
+  projectRoot?: string;
   repoRoot?: string;
   memoryDir?: string;
   mode?: MemoryMode;
   taskPath?: string;
   request?: string;
+  repo?: string;
+  branch?: string;
+  scopeType?: ScopeType;
+  scopeValue?: string;
+  repoScope?: string;
   now?: Date;
 }
+
+const scopeTypes = new Set<ScopeType>(['global_user', 'repo', 'branch', 'directory', 'file', 'task_type', 'session']);
 
 function countWords(value: string): number {
   return value.trim().split(/\s+/).filter(Boolean).length;
@@ -33,18 +43,35 @@ function trimToWordLimit(value: string, maxWords: number): string {
   return words.slice(0, maxWords).join(' ');
 }
 
-async function loadTask(options: BuildMemoryBriefingOptions, mode: MemoryMode): Promise<TaskInput> {
+function isScopeType(value: string): value is ScopeType {
+  return scopeTypes.has(value as ScopeType);
+}
+
+export async function resolveBriefingTask(
+  options: BuildMemoryBriefingOptions,
+  mode: MemoryMode,
+  configuredRepoScope = 'local',
+  harnessRoot?: string,
+  projectRoot?: string,
+): Promise<TaskInput> {
   if (options.taskPath) {
-    return loadTaskFromPath(options.taskPath, options.repoRoot);
+    const schemaRoot = harnessRoot ?? options.harnessRoot ?? options.repoRoot;
+    const taskRoot = projectRoot ?? options.projectRoot ?? schemaRoot;
+    return loadTaskFromPath(options.taskPath, schemaRoot, taskRoot);
   }
 
   if (options.request) {
-    return normalizeTask({
+    const repo = options.repo ?? configuredRepoScope;
+    const task = normalizeTask({
       user_request: options.request,
-      repo: 'local',
-      scope_type: 'repo',
-      scope_value: 'local',
+      repo,
+      branch: options.branch,
+      scope_type: options.scopeType ?? 'repo',
+      scope_value: options.scopeValue ?? repo,
     });
+
+    const schemaRoot = harnessRoot ?? options.harnessRoot ?? options.repoRoot;
+    return schemaRoot ? assertValidTask(task, schemaRoot) : assertValidTask(task);
   }
 
   if (mode === 'demo') {
@@ -67,14 +94,50 @@ function buildRenderedBriefing(items: BriefingItem[], task: TaskInput): string {
   return trimToWordLimit(parts.join(' '), BRIEFING_MAX_WORDS);
 }
 
+function buildWarnings(renderedBriefing: string, ranked: RankedMemory[]): string[] {
+  const warnings: string[] = [];
+
+  if (countWords(renderedBriefing) > BRIEFING_MAX_WORDS) {
+    warnings.push('Briefing was trimmed to the shared word limit.');
+  }
+
+  const conflictIds = [
+    ...new Set(
+      ranked
+        .filter((entry) => entry.category === 'conflict' || entry.memory.conflicts.length > 0)
+        .flatMap((entry) => [
+          entry.memory.memory_id,
+          ...entry.memory.conflicts.map((conflict) => conflict.memory_id),
+        ]),
+    ),
+  ];
+
+  if (conflictIds.length > 0) {
+    warnings.push(`Selected memories include unresolved conflicts: ${conflictIds.join(', ')}`);
+  }
+
+  const uncertainIds = ranked
+    .filter((entry) => entry.category === 'uncertainty')
+    .map((entry) => entry.memory.memory_id);
+
+  if (uncertainIds.length > 0) {
+    warnings.push(`Selected memories include uncertain or low-confidence items: ${uncertainIds.join(', ')}`);
+  }
+
+  return warnings;
+}
+
 export async function buildMemoryBriefing(options?: BuildMemoryBriefingOptions): Promise<Briefing> {
   const mode = options?.mode ?? 'strict';
   const config = createMemoryConfig({
+    harnessRoot: options?.harnessRoot,
+    projectRoot: options?.projectRoot,
     repoRoot: options?.repoRoot,
     memoryDir: options?.memoryDir,
     mode,
+    repoScope: options?.repoScope,
   });
-  const task = await loadTask(options ?? {}, mode);
+  const task = await resolveBriefingTask(options ?? {}, mode, config.repoScope, config.harnessRoot, config.projectRoot);
   const memories: MemoryRecord[] = mode === 'demo' ? sampleMemories : await readAllMemories(config);
   const ranked = rankMemories(task, memories, BRIEFING_MAX_ITEMS);
   const items: BriefingItem[] = ranked.map((entry) => ({
@@ -87,7 +150,7 @@ export async function buildMemoryBriefing(options?: BuildMemoryBriefingOptions):
     evidence_refs: entry.memory.evidence_refs,
   }));
   const rendered_briefing = buildRenderedBriefing(items, task);
-  const warnings = countWords(rendered_briefing) > BRIEFING_MAX_WORDS ? ['Briefing was trimmed to the shared word limit.'] : [];
+  const warnings = buildWarnings(rendered_briefing, ranked);
   const briefing: Briefing = {
     task_id: task.task_id,
     generated_at: (options?.now ?? new Date()).toISOString(),
@@ -102,43 +165,69 @@ export async function buildMemoryBriefing(options?: BuildMemoryBriefingOptions):
   return assertValidBriefing(briefing, config.repoRoot);
 }
 
-function parseArgs(argv: string[]) {
-  const parsed: {
-    demo: boolean;
-    taskPath?: string;
-    request?: string;
-    memoryDir?: string;
-  } = {
-    demo: false,
-  };
+export interface MemoryBriefingCliArgs {
+  demo: boolean;
+  taskPath?: string;
+  request?: string;
+  memoryDir?: string;
+  projectRoot?: string;
+  harnessRoot?: string;
+  repo?: string;
+  branch?: string;
+  scopeType?: ScopeType;
+  scopeValue?: string;
+}
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
+type MemoryBriefingCliKey = keyof Omit<MemoryBriefingCliArgs, 'scopeType'> | 'scopeType';
 
-    if (argument === '--demo') {
-      parsed.demo = true;
-    } else if (argument === '--task') {
-      parsed.taskPath = argv[index + 1];
-      index += 1;
-    } else if (argument === '--request') {
-      parsed.request = argv[index + 1];
-      index += 1;
-    } else if (argument === '--memory-dir') {
-      parsed.memoryDir = argv[index + 1];
-      index += 1;
-    }
+export function parseMemoryBriefingArgs(argv: string[]): MemoryBriefingCliArgs {
+  const parsed = parseCliArgs<MemoryBriefingCliKey>(argv, {
+    booleanFlags: [{ flag: '--demo', key: 'demo' }],
+    stringOptions: [
+      { flag: '--task', key: 'taskPath' },
+      { flag: '--request', key: 'request' },
+      { flag: '--memory-dir', key: 'memoryDir' },
+      { flag: '--project-root', key: 'projectRoot' },
+      { flag: '--harness-root', key: 'harnessRoot' },
+      { flag: '--repo', key: 'repo' },
+      { flag: '--branch', key: 'branch' },
+      { flag: '--scope-type', key: 'scopeType' },
+      { flag: '--scope-value', key: 'scopeValue' },
+    ],
+  });
+  const scopeType = parsed.scopeType;
+
+  if (typeof scopeType === 'string' && !isScopeType(scopeType)) {
+    throw new Error(`--scope-type must be one of: ${Array.from(scopeTypes).join(', ')}.`);
   }
 
-  return parsed;
+  return {
+    demo: parsed.demo === true,
+    taskPath: parsed.taskPath as string | undefined,
+    request: parsed.request as string | undefined,
+    memoryDir: parsed.memoryDir as string | undefined,
+    projectRoot: parsed.projectRoot as string | undefined,
+    harnessRoot: parsed.harnessRoot as string | undefined,
+    repo: parsed.repo as string | undefined,
+    branch: parsed.branch as string | undefined,
+    scopeType: scopeType as ScopeType | undefined,
+    scopeValue: parsed.scopeValue as string | undefined,
+  };
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const args = parseArgs(process.argv.slice(2));
+  const args = parseMemoryBriefingArgs(process.argv.slice(2));
   const briefing = await buildMemoryBriefing({
     mode: args.demo ? 'demo' : 'strict',
     taskPath: args.taskPath,
     request: args.request,
+    harnessRoot: args.harnessRoot,
+    projectRoot: args.projectRoot,
     memoryDir: args.memoryDir,
+    repo: args.repo,
+    branch: args.branch,
+    scopeType: args.scopeType,
+    scopeValue: args.scopeValue,
   });
   process.stdout.write(`${JSON.stringify(briefing, null, 2)}\n`);
 }

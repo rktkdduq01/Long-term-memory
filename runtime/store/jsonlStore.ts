@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 export interface JsonlReadOptions {
@@ -53,4 +53,9 @@ export async function appendJsonl<T>(path: string, record: T): Promise<void> {
   const records = await readJsonl<T>(path);
   records.push(record);
   await writeJsonl(path, records);
+}
+
+export async function appendJsonlLine<T>(path: string, record: T): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await appendFile(path, `${JSON.stringify(record)}\n`, 'utf8');
 }

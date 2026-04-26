@@ -1,8 +1,8 @@
 import type { MemoryConfig } from '../config/memoryConfig.ts';
-import type { ApprovalEvent, MemoryCandidate, MemoryRecord } from '../contracts/types.ts';
+import type { ApprovalEvent, CandidateStatus, MemoryCandidate, MemoryRecord } from '../contracts/types.ts';
 import { assertValidCandidate } from '../contracts/validateCandidate.ts';
 import { appendAuditEvent } from './auditStore.ts';
-import { appendJsonl, readJsonl, writeJsonl } from './jsonlStore.ts';
+import { appendJsonlLine, readJsonl, writeJsonl } from './jsonlStore.ts';
 import { appendMemory, markMemoriesSuperseded } from './memoryStore.ts';
 
 function candidatePath(config: MemoryConfig, status: MemoryCandidate['status']): string {
@@ -22,6 +22,16 @@ function nowIso(now = new Date()): string {
 
 function evidenceForDecision(candidate: MemoryCandidate) {
   return candidate.evidence_refs.slice(0, 3);
+}
+
+function requireDecisionReason(reason: string, action: 'approve' | 'reject'): string {
+  const trimmed = reason?.trim();
+
+  if (!trimmed) {
+    throw new Error(`A non-empty reason is required to ${action} a memory candidate.`);
+  }
+
+  return trimmed;
 }
 
 export function memoryIdFromCandidate(candidate: MemoryCandidate): string {
@@ -50,6 +60,22 @@ export function memoryFromCandidate(candidate: MemoryCandidate, approvedAt: stri
   };
 }
 
+export interface SkippedPendingCandidate {
+  candidate: MemoryCandidate;
+  existing_status: CandidateStatus;
+  reason: 'duplicate_candidate_id';
+}
+
+export interface AppendPendingCandidatesOptions {
+  replacePending?: boolean;
+}
+
+export interface AppendPendingCandidatesResult {
+  appended: MemoryCandidate[];
+  replaced: MemoryCandidate[];
+  skipped: SkippedPendingCandidate[];
+}
+
 export async function readCandidates(
   config: MemoryConfig,
   status: MemoryCandidate['status'],
@@ -67,8 +93,18 @@ export async function readCandidates(
 export async function appendPendingCandidates(
   config: MemoryConfig,
   candidates: MemoryCandidate[],
-): Promise<MemoryCandidate[]> {
-  const pending: MemoryCandidate[] = [];
+  options?: AppendPendingCandidatesOptions,
+): Promise<AppendPendingCandidatesResult> {
+  const existingPending = await readCandidates(config, 'pending');
+  const approved = await readCandidates(config, 'approved');
+  const rejected = await readCandidates(config, 'rejected');
+  const nextPending = [...existingPending];
+  const pendingIndexes = new Map(existingPending.map((candidate, index) => [candidate.candidate_id, index]));
+  const approvedIds = new Set(approved.map((candidate) => candidate.candidate_id));
+  const rejectedIds = new Set(rejected.map((candidate) => candidate.candidate_id));
+  const appended: MemoryCandidate[] = [];
+  const replaced: MemoryCandidate[] = [];
+  const skipped: SkippedPendingCandidate[] = [];
 
   for (const candidate of candidates) {
     const normalizedCandidate = await assertValidCandidate(
@@ -78,8 +114,51 @@ export async function appendPendingCandidates(
       },
       config.repoRoot,
     );
-    await appendJsonl(config.stores.candidates.pending, normalizedCandidate);
-    pending.push(normalizedCandidate);
+
+    if (approvedIds.has(normalizedCandidate.candidate_id)) {
+      skipped.push({
+        candidate: normalizedCandidate,
+        existing_status: 'approved',
+        reason: 'duplicate_candidate_id',
+      });
+      continue;
+    }
+
+    if (rejectedIds.has(normalizedCandidate.candidate_id)) {
+      skipped.push({
+        candidate: normalizedCandidate,
+        existing_status: 'rejected',
+        reason: 'duplicate_candidate_id',
+      });
+      continue;
+    }
+
+    const pendingIndex = pendingIndexes.get(normalizedCandidate.candidate_id);
+
+    if (pendingIndex !== undefined) {
+      if (options?.replacePending === true) {
+        nextPending[pendingIndex] = normalizedCandidate;
+        replaced.push(normalizedCandidate);
+      } else {
+        skipped.push({
+          candidate: normalizedCandidate,
+          existing_status: 'pending',
+          reason: 'duplicate_candidate_id',
+        });
+      }
+      continue;
+    }
+
+    pendingIndexes.set(normalizedCandidate.candidate_id, nextPending.length);
+    nextPending.push(normalizedCandidate);
+    appended.push(normalizedCandidate);
+  }
+
+  if (appended.length > 0 || replaced.length > 0) {
+    await writeJsonl(config.stores.candidates.pending, nextPending);
+  }
+
+  for (const normalizedCandidate of appended) {
     await appendAuditEvent(config, {
       event_id: `audit_generated_${normalizedCandidate.candidate_id}_${Date.parse(normalizedCandidate.created_at)}`,
       action: 'candidate_generated',
@@ -92,7 +171,11 @@ export async function appendPendingCandidates(
     });
   }
 
-  return pending;
+  return {
+    appended,
+    replaced,
+    skipped,
+  };
 }
 
 function removeCandidate(candidates: MemoryCandidate[], candidateId: string): {
@@ -122,6 +205,7 @@ export async function approveCandidate(config: MemoryConfig, input: {
   superseded: MemoryRecord[];
 }> {
   const decidedAt = nowIso(input.now);
+  const reason = requireDecisionReason(input.reason, 'approve');
   const pending = await readCandidates(config, 'pending');
   const { candidate, remaining } = removeCandidate(pending, input.candidateId);
   const approvedCandidate = await assertValidCandidate(
@@ -134,7 +218,7 @@ export async function approveCandidate(config: MemoryConfig, input: {
   const memory = memoryFromCandidate(approvedCandidate, decidedAt);
 
   await writeJsonl(config.stores.candidates.pending, remaining);
-  await appendJsonl(config.stores.candidates.approved, approvedCandidate);
+  await appendJsonlLine(config.stores.candidates.approved, approvedCandidate);
   await appendMemory(config, memory);
 
   const superseded = await markMemoriesSuperseded(config, approvedCandidate.supersedes, memory.memory_id, decidedAt);
@@ -145,7 +229,7 @@ export async function approveCandidate(config: MemoryConfig, input: {
     memory_id: memory.memory_id,
     decided_at: decidedAt,
     decided_by: 'user',
-    reason: input.reason,
+    reason,
     evidence_refs: evidenceForDecision(approvedCandidate),
   };
 
@@ -181,6 +265,7 @@ export async function rejectCandidate(config: MemoryConfig, input: {
   rejectionEvent: ApprovalEvent;
 }> {
   const decidedAt = nowIso(input.now);
+  const reason = requireDecisionReason(input.reason, 'reject');
   const pending = await readCandidates(config, 'pending');
   const { candidate, remaining } = removeCandidate(pending, input.candidateId);
   const rejectedCandidate = await assertValidCandidate(
@@ -192,7 +277,7 @@ export async function rejectCandidate(config: MemoryConfig, input: {
   );
 
   await writeJsonl(config.stores.candidates.pending, remaining);
-  await appendJsonl(config.stores.candidates.rejected, rejectedCandidate);
+  await appendJsonlLine(config.stores.candidates.rejected, rejectedCandidate);
 
   const rejectionEvent: ApprovalEvent = {
     event_id: `audit_rejected_${rejectedCandidate.candidate_id}_${Date.parse(decidedAt)}`,
@@ -201,7 +286,7 @@ export async function rejectCandidate(config: MemoryConfig, input: {
     memory_id: null,
     decided_at: decidedAt,
     decided_by: 'user',
-    reason: input.reason,
+    reason,
     evidence_refs: evidenceForDecision(rejectedCandidate),
   };
 

@@ -151,3 +151,20 @@ export interface ApprovalEvent {
   reason: string;
   evidence_refs: EvidenceRef[];
 }
+
+export interface ApprovalReviewRecommendation {
+  candidate_id: string;
+  recommended_action: 'approve' | 'reject' | 'needs_review';
+  reason: string;
+  confidence: number;
+  conflict_memory_ids: string[];
+  evidence_refs: EvidenceRef[];
+  persistence_allowed: false;
+}
+
+export interface ApprovalReview {
+  generated_at: string;
+  repo_scope: string;
+  recommendations: ApprovalReviewRecommendation[];
+  warnings: string[];
+}

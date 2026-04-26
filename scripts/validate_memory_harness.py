@@ -18,7 +18,7 @@ PROMPTS = {
     "pre-task-briefing.md": "schemas/briefing.schema.json",
     "post-task-distillation.md": "schemas/memory-candidate.schema.json",
     "memory-conflict-check.md": "schemas/memory-candidate.schema.json",
-    "memory-approval.md": "schemas/approval-event.schema.json",
+    "memory-approval.md": "schemas/approval-review.schema.json",
     "local-memory-search.md": "schemas/memory.schema.json",
 }
 
@@ -28,6 +28,7 @@ SCHEMAS = [
     "schemas/memory.schema.json",
     "schemas/memory-candidate.schema.json",
     "schemas/briefing.schema.json",
+    "schemas/approval-review.schema.json",
     "schemas/approval-event.schema.json",
 ]
 

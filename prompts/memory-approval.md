@@ -25,12 +25,12 @@ Do not hide conflicts.
 ## Output
 
 Output schema:
-`schemas/approval-event.schema.json`
+`schemas/approval-review.schema.json`
 
 Return raw JSON only. Do not wrap the output in markdown fences.
 
-Return a JSON array of review recommendations.
-Each object should be suitable for conversion into `schemas/approval-event.schema.json` only after the user makes an explicit decision.
+Return one JSON object that conforms to `schemas/approval-review.schema.json`.
+This is a review artifact only. It must not be treated as `schemas/approval-event.schema.json`.
 
 ## Review rules
 
@@ -39,6 +39,7 @@ Each object should be suitable for conversion into `schemas/approval-event.schem
 - Show conflicts from `conflict_report`.
 - Show which approved memories may be duplicated, contradicted, narrowed, or superseded.
 - Recommend `approve`, `reject`, or `needs_review`, but do not treat the recommendation as a decision.
+- Set `persistence_allowed` to `false` for every recommendation.
 - Favor `needs_review` when evidence is thin, conflicts are unresolved, sensitivity is unclear, or scope is too broad.
 - Favor `reject` for temporary observations, unsupported inferences, duplicated candidates, secrets, credentials, tokens, private keys, or sensitive personal data.
 - Favor `approve` only when the candidate is durable, scoped, evidence-backed, and likely to improve future performance, consistency, or safety.

@@ -37,8 +37,7 @@
       "minLength": 1
     },
     "metadata": {
-      "type": "object",
-      "additionalProperties": true
+      "type": "object"
     }
   }
 }
