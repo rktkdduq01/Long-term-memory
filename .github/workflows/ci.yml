@@ -33,5 +33,5 @@ jobs:
       - name: Smoke-test local MVP CLIs
         if: ${{ hashFiles('package.json') != '' }}
         run: |
-          npm run build:briefing > /tmp/briefing.json
-          npm run build:candidates > /tmp/candidates.json
+          npm run --silent memory:briefing -- --demo > /tmp/briefing.json
+          npm run --silent memory:candidates -- --demo > /tmp/candidates.json
