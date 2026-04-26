@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://long-term-memory.local/schemas/task.schema.json",
+  "title": "Task",
+  "type": "object",
+  "required": [
+    "task_id",
+    "user_request",
+    "repo",
+    "scope_type",
+    "scope_value",
+    "metadata"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "user_request": {
+      "type": "string",
+      "minLength": 1
+    },
+    "repo": {
+      "type": "string",
+      "minLength": 1
+    },
+    "branch": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope_type": {
+      "$ref": "./memory.schema.json#/$defs/scopeType"
+    },
+    "scope_value": {
+      "type": "string",
+      "minLength": 1
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

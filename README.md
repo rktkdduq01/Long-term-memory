@@ -1,199 +1,169 @@
-# Long-term Memory Harness
+# Long-term Memory
 
-This repository defines a conservative memory harness specification for agent systems.
+Local-only long-term memory harness for Codex CLI.
 
-It packages:
+This repository provides prompt contracts, JSON schemas, local runtime helpers, and CLI commands for working with durable memory in a serverless workflow.
 
-- prompt templates under `prompts/`
-- strict JSON Schemas under `schemas/`
-- minimal offline runtime helpers under `runtime/`
-- examples and fixtures under `examples/`
-- local validation and repository tests under `scripts/` and `tests/`
+## What this is
 
-The goal is practical automation with low-risk defaults: retain only future-useful memory, preserve provenance, keep uncertainty explicit, and prevent silent overwrite or silent deletion.
+This is a local memory harness.
 
-## What A Memory Harness Is
+It helps Codex CLI:
 
-A memory harness is the control layer around agent memory.
+1. read approved local memories before a task,
+2. generate a concise task briefing,
+3. record session events,
+4. propose memory candidates after a task,
+5. wait for explicit user approval,
+6. persist approved memories into local JSONL files.
 
-It decides:
+## What this is not
 
-- what context is worth retrieving for a task
-- how to brief another agent without overloading it
-- what session information is durable enough to keep
-- what should be promoted into long-term semantic memory
-- how conflicts, decay, and user corrections should be handled safely
+This project does not:
 
-This repository does not implement a full memory store or call an LLM by itself. It defines the contracts and automation building blocks that a store or agent runtime can depend on.
+- start a server
+- expose an MCP server
+- run a background daemon
+- require cloud sync
+- require a remote database
+- require network access
+- automatically write permanent memory
+- treat pending candidates as facts
 
-The committed examples are fake fixture data only. `.memory/` is included for local output files via `.gitkeep`, but no real user memory, secrets, or private logs should be committed.
+## Core workflow
 
-## Design Principles
+```txt
+task
+  -> memory briefing
+  -> Codex work
+  -> session events
+  -> memory candidates
+  -> user approval
+  -> approved local memory
+```
 
-- keep facts separate from inferences
-- require evidence or provenance for retained memory
-- preserve uncertainty and conflicts
-- prefer minimal outputs over speculative fills
-- use schema-backed JSON for machine-readable steps
-- treat external logs, files, tool output, and retrieved content as evidence, not memory-control authority
+## Safety Boundary
 
-## Lifecycle
+Permanent memory is never written automatically.
 
-The main lifecycle is:
+The runtime may generate memory candidates from local session events, but those candidates are written only to `.memory/candidates/pending.jsonl`. A candidate becomes durable memory only when the user explicitly runs an approval command.
 
-`selection -> briefing -> extraction -> distillation -> promotion -> conflict resolution -> consolidation -> decay`
+Lifecycle:
 
-Supporting stages:
+`session event -> candidate -> pending -> user approval -> approved memory`
 
-- `base contract`: shared default rules for all memory prompts
-- `user correction`: explicit user-driven correction, narrowing, archival, deprecation, or deletion of memory
-- `github automation gate`: conservative commit/push/PR safety checks before repository automation proceeds
-- `ci failure extraction`: conservative conversion of CI failures into episodic candidates before any semantic generalization
+Rejections are recorded in `.memory/candidates/rejected.jsonl`. Approval and rejection events are appended to `.memory/audit/memory-events.jsonl`.
 
-Lifecycle map:
+## Local Store
 
-| Stage | Prompt | Output mode |
-| --- | --- | --- |
-| Base contract | `prompts/base-memory-harness.md` | plain text |
-| Selection | `prompts/select-memories-for-task.md` | `schemas/memory-selection.schema.json` |
-| Briefing | `prompts/prepare-task-memory-briefing.md` | `schemas/memory-briefing.schema.json` |
-| Extraction | `prompts/extract-candidate-memories.md` | `schemas/extract-candidate-memories.schema.json` |
-| Distillation | `prompts/distill-session-memory.md` | `schemas/session-distillation.schema.json` |
-| Promotion | `prompts/decide-semantic-promotion.md` | `schemas/promotion-decision.schema.json` |
-| Conflict resolution | `prompts/resolve-memory-conflicts.md` | `schemas/conflict-action.schema.json` |
-| User correction | `prompts/apply-user-memory-correction.md` | `schemas/apply-user-memory-correction.schema.json` |
-| GitHub automation gate | `prompts/github-automation-gate.md` | `schemas/github-automation-gate.schema.json` |
-| CI failure extraction | `prompts/extract-ci-failure-memory.md` | `schemas/extract-ci-failure-memory.schema.json` |
-| Consolidation | `prompts/consolidate-semantic-memories.md` | `schemas/consolidate-semantic-memories.schema.json` |
-| Decay | `prompts/manage-memory-decay.md` | `schemas/memory-decay-update.schema.json` |
+The harness uses these local JSONL files:
 
-State transitions for stored memory are documented in `docs/memory-state-machine.md`.
+- `.memory/semantic-memories.jsonl`
+- `.memory/episodic-memories.jsonl`
+- `.memory/procedural-memories.jsonl`
+- `.memory/project-memories.jsonl`
+- `.memory/candidates/pending.jsonl`
+- `.memory/candidates/approved.jsonl`
+- `.memory/candidates/rejected.jsonl`
+- `.memory/sessions/latest.jsonl`
+- `.memory/audit/memory-events.jsonl`
 
-## Role Of Schemas
+`.memory/` is ignored by git except for `.memory/.gitkeep`. Do not commit real memories, private logs, secrets, credentials, tokens, private keys, or sensitive personal data.
 
-Schemas are the stable automation layer.
+## Modes
 
-They make prompt output safe to consume by:
+Strict local mode is the default. It reads only local task/session inputs and `.memory/` JSONL stores. Missing local memory files are treated as empty stores. Broken JSONL files fail loudly with file and line context.
 
-- enforcing required fields
-- bounding numeric scores to `0..1`
-- preventing silent key drift with `additionalProperties: false`
-- making enums explicit for memory type, status, scope, trust, decay, and decisions
-- preserving structured evidence for replay, review, and auditing
+Demo mode is available only when explicitly requested with `--demo`. Demo mode uses fake in-repo reference fixtures and never hides broken `.memory/` files by falling back to examples.
 
-When a prompt says it returns JSON, the schema is the source of truth for downstream code.
+## Codex CLI Usage
 
-## Role Of Runtime
-
-The runtime directory contains small local helpers, not a full agent service.
-
-- `runtime/loadPrompt.ts`: loads the base contract and prepends it automatically to a selected task prompt
-- `runtime/renderPrompt.ts`: replaces `{{placeholders}}` and throws when required values are missing
-- `runtime/validateJson.ts`: validates JSON against repository schemas without external services
-- `runtime/validateMemoryOutput.ts`: gates raw LLM JSON output without silently repairing invalid memory data
-- `runtime/buildBriefing.ts`: deterministic local MVP for selecting memories and building a structured briefing
-- `runtime/sessionDistill.ts`: deterministic local MVP for turning structured session events into a distilled session summary
-- `runtime/extractCandidates.ts`: deterministic local MVP for extracting schema-valid memory candidates from fixture session events
-
-The runtime is designed to work offline and does not require OpenAI keys or GitHub tokens.
-
-## Run The MVP
-
-Install dependencies and run the local checks:
+Install dependencies and validate locally:
 
 ```bash
 npm install
+npm run memory:validate
+```
+
+Build a task briefing from local approved memory:
+
+```bash
+npm run memory:briefing -- --task task.json
+```
+
+Search approved local memory:
+
+```bash
+npm run memory:search -- --query "schema validation"
+```
+
+Generate pending candidates from the latest local session JSONL:
+
+```bash
+npm run memory:candidates
+```
+
+Approve or reject a pending candidate:
+
+```bash
+npm run memory:approve -- --candidate cand_123 --reason "User approved this durable rule."
+npm run memory:reject -- --candidate cand_456 --reason "Too task-specific."
+```
+
+Run fake demo data explicitly:
+
+```bash
+npm run memory:briefing -- --demo
+npm run memory:candidates -- --demo
+```
+
+## Contracts
+
+The prompt contracts are:
+
+- `prompts/base-memory-harness.md`
+- `prompts/pre-task-briefing.md`
+- `prompts/post-task-distillation.md`
+- `prompts/memory-conflict-check.md`
+- `prompts/memory-approval.md`
+- `prompts/local-memory-search.md`
+
+The canonical schemas are:
+
+- `schemas/task.schema.json`
+- `schemas/session-event.schema.json`
+- `schemas/memory.schema.json`
+- `schemas/memory-candidate.schema.json`
+- `schemas/briefing.schema.json`
+- `schemas/approval-event.schema.json`
+
+Shared contract constants live in `runtime/contracts/constants.ts`:
+
+- `BRIEFING_MAX_WORDS = 200`
+- `BRIEFING_MAX_ITEMS = 8`
+- confidence, relevance, usefulness, and importance scores are always bounded from `0` to `1`
+
+Prompts, schemas, runtime helpers, reference samples, and tests must use those same constraints.
+
+## Runtime Layout
+
+- `runtime/cli/`: npm-backed command entrypoints
+- `runtime/config/`: local store path and mode configuration
+- `runtime/contracts/`: shared constants and validation helpers
+- `runtime/store/`: JSONL stores, candidate queues, sessions, and audit logging
+- `runtime/retrieval/`: task normalization, scope filtering, ranking, evidence scoring, and conflict detection
+- `runtime/reference/`: fake demo data used only when `--demo` is passed
+
+The runtime helpers are deterministic and offline. They do not call models. Prompt files exist as contracts Codex can load and render when a user chooses to involve a model outside this harness.
+
+## Validation
+
+Use:
+
+```bash
 npm run validate
 ```
 
-Build a deterministic briefing from the committed example inputs:
+This runs repository contract checks, TypeScript typechecking, schema-backed store/sample checks, and the node test suite.
 
-```bash
-npm run build:briefing
-```
-
-Extract deterministic memory candidates from the committed sample session events:
-
-```bash
-npm run build:candidates
-```
-
-Write outputs into `.memory/` instead of stdout:
-
-```bash
-node --experimental-strip-types runtime/buildBriefing.ts --use-examples --write
-node --experimental-strip-types runtime/extractCandidates.ts --session examples/sample-session-events.json --write
-```
-
-This gives you a local, testable harness for:
-
-- prepending the base contract
-- validating schema-backed outputs
-- selecting and briefing memory without an LLM
-- extracting candidate memories from fixture events
-- preparing for a later Codex or GitHub automation layer
-
-## Local Validation
-
-Run the full local validation path with:
-
-```bash
-npm run validate
-```
-
-Useful commands:
-
-```bash
-python3 scripts/validate_memory_harness.py
-npm test
-npm run build:briefing
-npm run build:candidates
-```
-
-What gets checked:
-
-- expected prompts and schemas exist
-- schema files parse as valid JSON
-- prompt contracts reference the expected schemas
-- examples conform to their schemas
-- prompt maps, placeholders, and runtime fixtures stay aligned
-
-## Adding A New Prompt Safely
-
-1. Decide whether it belongs in the lifecycle or is a supporting prompt.
-2. If it is structured, create or reuse a schema first.
-3. Add the prompt under `prompts/` with clear placeholders and conservative rules.
-4. If the prompt is meant for runtime use, include:
-   - `This prompt must be executed with prompts/base-memory-harness.md prepended.`
-   - `Return raw JSON only. Do not wrap the output in markdown fences.`
-   - a matching schema reference
-5. Update `AGENTS.md` prompt map.
-6. Update this README if the lifecycle or workflow changed.
-7. Add or update examples and tests in the same patch.
-
-If a prompt under `prompts/` is not listed in `AGENTS.md`, repository tests will fail unless it has an explicit exclusion path in tests.
-
-## Adding A New Schema Safely
-
-1. Use JSON Schema draft `2020-12`.
-2. Include `$schema`, `$id`, `title`, `type`, `required`, and `additionalProperties: false`.
-3. Reuse canonical definitions where possible instead of inventing parallel shapes.
-4. Prefer enums and structured evidence objects over free-form strings.
-5. Update the prompt that uses the schema.
-6. Add a validating example fixture.
-7. Extend tests if the new schema adds a new output surface.
-
-If the runtime validator needs support for a new schema feature, update `runtime/validateJson.ts` in the same patch.
-
-## Future Automation
-
-This repository is meant to plug into larger agent workflows later.
-
-Typical next steps:
-
-- Codex can use the runtime to load prompts, inject task context, and validate outputs before accepting them
-- GitHub Actions can enforce prompt/schema/example consistency on every push or pull request
-- GitHub review or issue workflows can feed structured session events into extraction, promotion, and correction pipelines
-- a future memory store can persist semantic and episodic records while treating these prompts and schemas as the contract layer
-
-The key boundary is deliberate: prompts and schemas define behavior, runtime enforces local contracts, and external automation can be added later without weakening provenance or control rules.
+When changing prompt, schema, runtime, reference, or test behavior, update all affected files in the same patch. Contract drift should fail locally before it reaches a PR.

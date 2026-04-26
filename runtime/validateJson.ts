@@ -189,6 +189,10 @@ async function validateAgainstSchema(
       errors.push(`${valuePath}: must have at least ${schemaWithRef.minLength} characters.`);
     }
 
+    if (typeof schemaWithRef.maxLength === 'number' && value.length > schemaWithRef.maxLength) {
+      errors.push(`${valuePath}: must have at most ${schemaWithRef.maxLength} characters.`);
+    }
+
     if (schemaWithRef.format === 'date-time' && Number.isNaN(Date.parse(value))) {
       errors.push(`${valuePath}: must be a valid date-time string.`);
     }
@@ -207,6 +211,10 @@ async function validateAgainstSchema(
   if (Array.isArray(value)) {
     if (typeof schemaWithRef.minItems === 'number' && value.length < schemaWithRef.minItems) {
       errors.push(`${valuePath}: must have at least ${schemaWithRef.minItems} items.`);
+    }
+
+    if (typeof schemaWithRef.maxItems === 'number' && value.length > schemaWithRef.maxItems) {
+      errors.push(`${valuePath}: must have at most ${schemaWithRef.maxItems} items.`);
     }
 
     if (schemaWithRef.uniqueItems) {

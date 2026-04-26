@@ -3,60 +3,59 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
 
+import { BRIEFING_MAX_ITEMS, BRIEFING_MAX_WORDS, MEMORY_STORE_FILES, SCORE_MAX, SCORE_MIN } from '../runtime/contracts/constants.ts';
+import { sampleCandidates } from '../runtime/reference/sampleCandidates.ts';
+import { sampleMemories, sampleSessionEvents, sampleTask } from '../runtime/reference/sampleBriefing.ts';
 import { getRepoRoot } from '../runtime/loadPrompt.ts';
-import { validateJson, validateJsonFile } from '../runtime/validateJson.ts';
+import { validateJson } from '../runtime/validateJson.ts';
 
 const repoRoot = getRepoRoot();
 const promptsDir = resolve(repoRoot, 'prompts');
 const schemasDir = resolve(repoRoot, 'schemas');
-const examplesDir = resolve(repoRoot, 'examples');
 const agentsPath = resolve(repoRoot, 'AGENTS.md');
+const readmePath = resolve(repoRoot, 'README.md');
+const packagePath = resolve(repoRoot, 'package.json');
 
-const BASE_PROMPT_REQUIREMENT = /This prompt must be executed with `?prompts\/base-memory-harness\.md`? prepended\./;
-const RAW_JSON_REQUIREMENT = 'Return raw JSON only';
-
-const PROMPT_PLACEHOLDER_CONTRACTS: Record<string, string[]> = {
-  'apply-user-memory-correction.md': ['affected_memories', 'current_task_context', 'user_correction_request'],
-  'base-memory-harness.md': [],
-  'consolidate-semantic-memories.md': ['semantic_memories'],
-  'decide-semantic-promotion.md': ['candidates', 'existing_semantic_memories'],
-  'distill-session-memory.md': ['session_timeline', 'user_request', 'user_signals', 'validation_results'],
-  'extract-ci-failure-memory.md': [
-    'branch',
-    'changed_files',
-    'ci_workflow_name',
-    'commit_sha',
-    'failed_jobs',
-    'failure_logs',
-    'task_context',
-  ],
-  'extract-candidate-memories.md': ['session_events', 'user_request'],
-  'github-automation-gate.md': [
-    'changed_files',
-    'local_validation_results',
-    'memory_changes',
-    'risk_assessment',
-    'target_branch',
-    'task_summary',
-  ],
-  'manage-memory-decay.md': ['semantic_memories', 'usage_history'],
-  'prepare-task-memory-briefing.md': ['selected_memories', 'user_request'],
-  'resolve-memory-conflicts.md': ['existing_memories', 'new_candidates'],
-  'select-memories-for-task.md': ['episodic_memories', 'semantic_memories', 'task_metadata', 'user_request'],
-};
-
-const JSON_PROMPTS = new Set(
-  Object.keys(PROMPT_PLACEHOLDER_CONTRACTS).filter((promptName) => promptName !== 'base-memory-harness.md'),
-);
-
-const PROMPT_EXCLUSIONS: Record<string, string> = {};
-
-const OUTPUT_EXAMPLE_SCHEMA_PAIRS = [
-  ['sample-selection-output.json', 'schemas/memory-selection.schema.json'],
-  ['sample-briefing-output.json', 'schemas/memory-briefing.schema.json'],
-  ['sample-candidate-output.json', 'schemas/extract-candidate-memories.schema.json'],
-  ['sample-promotion-output.json', 'schemas/promotion-decision.schema.json'],
+const EXPECTED_PROMPTS = [
+  'base-memory-harness.md',
+  'local-memory-search.md',
+  'memory-approval.md',
+  'memory-conflict-check.md',
+  'post-task-distillation.md',
+  'pre-task-briefing.md',
 ] as const;
+
+const EXPECTED_SCHEMAS = [
+  'approval-event.schema.json',
+  'briefing.schema.json',
+  'memory-candidate.schema.json',
+  'memory.schema.json',
+  'session-event.schema.json',
+  'task.schema.json',
+] as const;
+
+const PROMPT_PLACEHOLDERS: Record<string, string[]> = {
+  'base-memory-harness.md': [],
+  'local-memory-search.md': ['approved_memories', 'now', 'pending_candidates', 'query', 'repo_scope'],
+  'memory-approval.md': ['approved_memories', 'conflict_report', 'now', 'pending_candidates', 'repo_scope'],
+  'memory-conflict-check.md': ['approved_memories', 'now', 'pending_candidates', 'repo_scope'],
+  'post-task-distillation.md': [
+    'approved_memories',
+    'existing_candidates',
+    'now',
+    'repo_scope',
+    'session_events',
+    'task',
+  ],
+  'pre-task-briefing.md': [
+    'approved_memories',
+    'conflicted_memories',
+    'now',
+    'pending_candidates',
+    'repo_scope',
+    'task',
+  ],
+};
 
 function extractPromptPathsFromAgents(content: string): string[] {
   return [...content.matchAll(/`(prompts\/[^`]+\.md)`/g)].map((match) => match[1]);
@@ -70,97 +69,122 @@ async function readJsonFile<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, 'utf8')) as T;
 }
 
-test('every prompt listed in AGENTS.md exists on disk', async () => {
-  const agentsContent = await readFile(agentsPath, 'utf8');
-  const promptPaths = extractPromptPathsFromAgents(agentsContent);
-
-  assert.ok(promptPaths.length > 0, 'AGENTS.md should list at least one prompt.');
-
-  for (const promptPath of promptPaths) {
-    const absolutePromptPath = resolve(repoRoot, promptPath);
-    const promptContent = await readFile(absolutePromptPath, 'utf8');
-    assert.ok(promptContent.length > 0, `${promptPath} should be readable.`);
-  }
-});
-
-test('every prompt file under prompts/ is listed in AGENTS.md or explicitly excluded', async () => {
-  const agentsContent = await readFile(agentsPath, 'utf8');
-  const promptPathsInAgents = new Set(extractPromptPathsFromAgents(agentsContent).map((promptPath) => basename(promptPath)));
+test('prompt and schema inventories match the local-only contract', async () => {
   const promptFiles = (await readdir(promptsDir)).filter((entry) => entry.endsWith('.md')).sort();
-
-  for (const promptFile of promptFiles) {
-    const listedInAgents = promptPathsInAgents.has(promptFile);
-    const exclusionReason = PROMPT_EXCLUSIONS[promptFile];
-
-    assert.ok(
-      listedInAgents || Boolean(exclusionReason),
-      `Prompt ${promptFile} must be listed in AGENTS.md or have an explicit exclusion reason.`,
-    );
-  }
-});
-
-test('schema files in schemas/ are valid JSON', async () => {
   const schemaFiles = (await readdir(schemasDir)).filter((entry) => entry.endsWith('.json')).sort();
 
-  assert.ok(schemaFiles.length > 0, 'schemas/ should contain JSON schema files.');
+  assert.deepEqual(promptFiles, [...EXPECTED_PROMPTS].sort());
+  assert.deepEqual(schemaFiles, [...EXPECTED_SCHEMAS].sort());
+});
 
-  for (const schemaFile of schemaFiles) {
-    const schemaPath = resolve(schemasDir, schemaFile);
-    const rawSchema = await readFile(schemaPath, 'utf8');
-    assert.doesNotThrow(() => JSON.parse(rawSchema), `${schemaFile} should parse as valid JSON.`);
+test('AGENTS.md lists every active prompt and the Codex CLI scripts', async () => {
+  const agentsContent = await readFile(agentsPath, 'utf8');
+  const promptPaths = [...new Set(extractPromptPathsFromAgents(agentsContent).map((promptPath) => basename(promptPath)))].sort();
+
+  assert.deepEqual(promptPaths, [...EXPECTED_PROMPTS].sort());
+  for (const script of ['memory:briefing', 'memory:search', 'memory:candidates', 'memory:approve', 'memory:reject', 'memory:validate']) {
+    assert.match(agentsContent, new RegExp(script.replace(':', ':')));
+  }
+  assert.match(agentsContent, /Permanent memory must never be written automatically/);
+  assert.match(agentsContent, /Strict local mode is default/);
+});
+
+test('README states the local-only product boundary and JSONL store layout', async () => {
+  const readme = await readFile(readmePath, 'utf8');
+
+  for (const phrase of [
+    'Local-only long-term memory harness for Codex CLI',
+    'This repository provides prompt contracts, JSON schemas, local runtime helpers, and CLI commands',
+    'start a server',
+    'expose an MCP server',
+    'background daemon',
+    'require network access',
+    'Permanent memory is never written automatically',
+    'Demo mode is available only when explicitly requested',
+  ]) {
+    assert.match(readme, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  }
+
+  for (const storePath of Object.values(MEMORY_STORE_FILES)) {
+    assert.match(readme, new RegExp(storePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   }
 });
 
-test('prompt placeholder contracts match the current prompt files', async () => {
-  for (const [promptFile, expectedPlaceholders] of Object.entries(PROMPT_PLACEHOLDER_CONTRACTS)) {
+test('prompt placeholder contracts and JSON instructions stay aligned', async () => {
+  for (const [promptFile, expectedPlaceholders] of Object.entries(PROMPT_PLACEHOLDERS)) {
     const promptContent = await readFile(resolve(promptsDir, promptFile), 'utf8');
-    const actualPlaceholders = extractPlaceholders(promptContent);
+    assert.deepEqual(extractPlaceholders(promptContent), expectedPlaceholders);
 
-    assert.deepEqual(
-      actualPlaceholders,
-      [...expectedPlaceholders].sort(),
-      `${promptFile} placeholders changed. Update tests if the contract changed intentionally.`,
-    );
-  }
-});
-
-test('JSON-returning prompts include raw JSON and schema instructions, and non-base prompts require the base prompt', async () => {
-  for (const promptFile of Object.keys(PROMPT_PLACEHOLDER_CONTRACTS)) {
-    const promptContent = await readFile(resolve(promptsDir, promptFile), 'utf8');
-
-    if (promptFile !== 'base-memory-harness.md') {
-      assert.match(promptContent, BASE_PROMPT_REQUIREMENT, `${promptFile} must declare the base prompt requirement.`);
-    }
-
-    if (JSON_PROMPTS.has(promptFile)) {
-      assert.match(promptContent, /Output schema:\s*\n`schemas\/[^`]+\.schema\.json`/, `${promptFile} must reference a schema.`);
-      assert.match(promptContent, /Return raw JSON only/, `${promptFile} must require raw JSON output.`);
+    if (promptFile === 'base-memory-harness.md') {
+      assert.doesNotMatch(promptContent, /Return raw JSON only/);
     } else {
-      assert.ok(!promptContent.includes(RAW_JSON_REQUIREMENT), `${promptFile} should not declare raw JSON output.`);
+      assert.match(promptContent, /This prompt must be executed with `prompts\/base-memory-harness\.md` prepended\./);
+      assert.match(promptContent, /Return raw JSON only\. Do not wrap the output in markdown fences\./);
+      assert.match(promptContent, /schemas\/[a-z-]+\.schema\.json/);
     }
   }
 });
 
-test('example output fixtures conform to their schemas', async () => {
-  for (const [exampleFile, schemaRelativePath] of OUTPUT_EXAMPLE_SCHEMA_PAIRS) {
-    const result = await validateJsonFile(resolve(examplesDir, exampleFile), resolve(repoRoot, schemaRelativePath));
-    assert.equal(result.valid, true, `${exampleFile} should validate: ${result.errors.join('; ')}`);
+test('canonical schema files parse and use strict root object contracts', async () => {
+  for (const schemaFile of EXPECTED_SCHEMAS) {
+    const schema = await readJsonFile<Record<string, unknown>>(resolve(schemasDir, schemaFile));
+
+    assert.equal(schema.$schema, 'https://json-schema.org/draft/2020-12/schema');
+    assert.equal(schema.type, 'object');
+    assert.equal(schema.additionalProperties, false);
+    assert.ok(Array.isArray(schema.required));
   }
 });
 
-test('semantic and episodic example inputs conform to their canonical schemas', async () => {
-  const semanticMemories = await readJsonFile<unknown[]>(resolve(examplesDir, 'sample-semantic-memories.json'));
-  const episodicMemories = await readJsonFile<unknown[]>(resolve(examplesDir, 'sample-episodic-memories.json'));
-  const semanticSchemaPath = resolve(repoRoot, 'schemas/semantic-memory.schema.json');
-  const episodicSchemaPath = resolve(repoRoot, 'schemas/episodic-memory.schema.json');
+test('shared constants match prompt and schema constraints', async () => {
+  assert.equal(BRIEFING_MAX_WORDS, 200);
+  assert.equal(BRIEFING_MAX_ITEMS, 8);
+  assert.equal(SCORE_MIN, 0);
+  assert.equal(SCORE_MAX, 1);
 
-  for (const [index, memory] of semanticMemories.entries()) {
-    const result = await validateJson(memory, semanticSchemaPath);
-    assert.equal(result.valid, true, `semantic example ${index} should validate: ${result.errors.join('; ')}`);
+  const briefingPrompt = await readFile(resolve(promptsDir, 'pre-task-briefing.md'), 'utf8');
+  const briefingSchema = await readJsonFile<Record<string, any>>(resolve(schemasDir, 'briefing.schema.json'));
+  const scoreDef = await readJsonFile<Record<string, any>>(resolve(schemasDir, 'memory.schema.json'));
+
+  assert.match(briefingPrompt, /under 200 words/);
+  assert.match(briefingPrompt, /no more than 8 briefing items/);
+  assert.equal(briefingSchema.properties.max_words.minimum, BRIEFING_MAX_WORDS);
+  assert.equal(briefingSchema.properties.max_items.maximum, BRIEFING_MAX_ITEMS);
+  assert.equal(scoreDef.$defs.score.minimum, SCORE_MIN);
+  assert.equal(scoreDef.$defs.score.maximum, SCORE_MAX);
+});
+
+test('reference samples validate against canonical schemas', async () => {
+  for (const memory of sampleMemories) {
+    const result = await validateJson(memory, resolve(schemasDir, 'memory.schema.json'));
+    assert.equal(result.valid, true, `${memory.memory_id}: ${result.errors.join('; ')}`);
   }
 
-  for (const [index, memory] of episodicMemories.entries()) {
-    const result = await validateJson(memory, episodicSchemaPath);
-    assert.equal(result.valid, true, `episodic example ${index} should validate: ${result.errors.join('; ')}`);
+  for (const candidate of sampleCandidates) {
+    const result = await validateJson(candidate, resolve(schemasDir, 'memory-candidate.schema.json'));
+    assert.equal(result.valid, true, `${candidate.candidate_id}: ${result.errors.join('; ')}`);
   }
+
+  for (const event of sampleSessionEvents) {
+    const result = await validateJson(event, resolve(schemasDir, 'session-event.schema.json'));
+    assert.equal(result.valid, true, `${event.event_id}: ${result.errors.join('; ')}`);
+  }
+
+  const taskResult = await validateJson(sampleTask, resolve(schemasDir, 'task.schema.json'));
+  assert.equal(taskResult.valid, true, taskResult.errors.join('; '));
+});
+
+test('package scripts expose local Codex CLI entrypoints without server dependencies', async () => {
+  const packageJson = await readJsonFile<Record<string, any>>(packagePath);
+
+  for (const script of ['memory:briefing', 'memory:search', 'memory:candidates', 'memory:approve', 'memory:reject', 'memory:validate']) {
+    assert.equal(typeof packageJson.scripts[script], 'string');
+    assert.match(packageJson.scripts[script], /node --experimental-strip-types runtime\/cli\//);
+  }
+
+  const dependencyNames = [
+    ...Object.keys(packageJson.dependencies ?? {}),
+    ...Object.keys(packageJson.devDependencies ?? {}),
+  ].join(' ');
+  assert.doesNotMatch(dependencyNames, /express|fastify|koa|hono|mcp|openai|vectordb|pinecone|chromadb/i);
 });

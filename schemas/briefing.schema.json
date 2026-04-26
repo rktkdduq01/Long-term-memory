@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://long-term-memory.local/schemas/briefing.schema.json",
+  "title": "Briefing",
+  "type": "object",
+  "required": [
+    "task_id",
+    "generated_at",
+    "mode",
+    "max_words",
+    "max_items",
+    "items",
+    "rendered_briefing",
+    "warnings"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "strict",
+        "demo"
+      ]
+    },
+    "max_words": {
+      "type": "integer",
+      "minimum": 200,
+      "maximum": 200
+    },
+    "max_items": {
+      "type": "integer",
+      "minimum": 8,
+      "maximum": 8
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "$ref": "#/$defs/briefingItem"
+      }
+    },
+    "rendered_briefing": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1600
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "briefingCategory": {
+      "type": "string",
+      "enum": [
+        "hard_rule",
+        "preference",
+        "recent_caution",
+        "uncertainty",
+        "conflict"
+      ]
+    },
+    "briefingItem": {
+      "type": "object",
+      "required": [
+        "memory_id",
+        "kind",
+        "category",
+        "gist",
+        "relevance",
+        "confidence",
+        "evidence_refs"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "memory_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "$ref": "./memory.schema.json#/$defs/memoryKind"
+        },
+        "category": {
+          "$ref": "#/$defs/briefingCategory"
+        },
+        "gist": {
+          "type": "string",
+          "minLength": 1
+        },
+        "relevance": {
+          "$ref": "./memory.schema.json#/$defs/score"
+        },
+        "confidence": {
+          "$ref": "./memory.schema.json#/$defs/score"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "./memory.schema.json#/$defs/evidenceRef"
+          }
+        }
+      }
+    }
+  }
+}

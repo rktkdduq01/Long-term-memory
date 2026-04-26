@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -12,37 +13,23 @@ ROOT = Path(__file__).resolve().parent.parent
 BASE_PROMPT_REQUIREMENT = "This prompt must be executed with `prompts/base-memory-harness.md` prepended."
 RAW_JSON_REQUIREMENT = "Return raw JSON only. Do not wrap the output in markdown fences."
 
-PROMPT_SEQUENCE = [
-    ("base contract", ROOT / "prompts" / "base-memory-harness.md", None),
-    ("selection", ROOT / "prompts" / "select-memories-for-task.md", ROOT / "schemas" / "memory-selection.schema.json"),
-    ("briefing", ROOT / "prompts" / "prepare-task-memory-briefing.md", ROOT / "schemas" / "memory-briefing.schema.json"),
-    ("extraction", ROOT / "prompts" / "extract-candidate-memories.md", ROOT / "schemas" / "extract-candidate-memories.schema.json"),
-    ("distillation", ROOT / "prompts" / "distill-session-memory.md", ROOT / "schemas" / "session-distillation.schema.json"),
-    ("promotion", ROOT / "prompts" / "decide-semantic-promotion.md", ROOT / "schemas" / "promotion-decision.schema.json"),
-    ("conflict resolution", ROOT / "prompts" / "resolve-memory-conflicts.md", ROOT / "schemas" / "conflict-action.schema.json"),
-    ("user correction", ROOT / "prompts" / "apply-user-memory-correction.md", ROOT / "schemas" / "apply-user-memory-correction.schema.json"),
-    ("github automation gate", ROOT / "prompts" / "github-automation-gate.md", ROOT / "schemas" / "github-automation-gate.schema.json"),
-    ("ci failure extraction", ROOT / "prompts" / "extract-ci-failure-memory.md", ROOT / "schemas" / "extract-ci-failure-memory.schema.json"),
-    ("consolidation", ROOT / "prompts" / "consolidate-semantic-memories.md", ROOT / "schemas" / "consolidate-semantic-memories.schema.json"),
-    ("decay", ROOT / "prompts" / "manage-memory-decay.md", ROOT / "schemas" / "memory-decay-update.schema.json"),
-]
+PROMPTS = {
+    "base-memory-harness.md": None,
+    "pre-task-briefing.md": "schemas/briefing.schema.json",
+    "post-task-distillation.md": "schemas/memory-candidate.schema.json",
+    "memory-conflict-check.md": "schemas/memory-candidate.schema.json",
+    "memory-approval.md": "schemas/approval-event.schema.json",
+    "local-memory-search.md": "schemas/memory.schema.json",
+}
 
-CANONICAL_SCHEMAS = [
-    ROOT / "schemas" / "candidate-memory.schema.json",
-    ROOT / "schemas" / "semantic-memory.schema.json",
-    ROOT / "schemas" / "episodic-memory.schema.json",
-    ROOT / "schemas" / "memory-selection.schema.json",
-    ROOT / "schemas" / "memory-briefing.schema.json",
-    ROOT / "schemas" / "session-distillation.schema.json",
-    ROOT / "schemas" / "promotion-decision.schema.json",
-    ROOT / "schemas" / "conflict-action.schema.json",
-    ROOT / "schemas" / "apply-user-memory-correction.schema.json",
-    ROOT / "schemas" / "github-automation-gate.schema.json",
-    ROOT / "schemas" / "extract-ci-failure-memory.schema.json",
-    ROOT / "schemas" / "memory-decay-update.schema.json",
+SCHEMAS = [
+    "schemas/task.schema.json",
+    "schemas/session-event.schema.json",
+    "schemas/memory.schema.json",
+    "schemas/memory-candidate.schema.json",
+    "schemas/briefing.schema.json",
+    "schemas/approval-event.schema.json",
 ]
-
-SCHEMA_README = ROOT / "schemas" / "README.md"
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -50,10 +37,11 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
         errors.append(message)
 
 
-def load_json_file(path: Path, errors: list[str]) -> dict | list | None:
+def load_json_file(path: Path, errors: list[str]) -> object | None:
     require(path.exists(), f"missing file: {path.relative_to(ROOT)}", errors)
     if not path.exists():
         return None
+
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -61,61 +49,86 @@ def load_json_file(path: Path, errors: list[str]) -> dict | list | None:
         return None
 
 
-def validate_schema_file(schema_path: Path, errors: list[str]) -> dict | list | None:
-    require(schema_path.exists(), f"missing schema file: {schema_path.relative_to(ROOT)}", errors)
-    if not schema_path.exists():
-        return None
-    return load_json_file(schema_path, errors)
+def placeholders(content: str) -> list[str]:
+    return sorted(set(re.findall(r"{{\s*([a-zA-Z0-9_]+)\s*}}", content)))
 
 
-def validate_canonical_schema(schema_path: Path, errors: list[str]) -> None:
-    data = validate_schema_file(schema_path, errors)
+def validate_schema(schema_path: Path, errors: list[str]) -> None:
+    data = load_json_file(schema_path, errors)
     if not isinstance(data, dict):
-        if data is not None:
-            errors.append(f"canonical schema must be a JSON object: {schema_path.relative_to(ROOT)}")
+        errors.append(f"schema must be a JSON object: {schema_path.relative_to(ROOT)}")
         return
 
-    required_keys = {"$schema", "$id", "title", "type", "required", "additionalProperties"}
-    missing_keys = sorted(required_keys - set(data.keys()))
-    require(not missing_keys, f"canonical schema missing keys {missing_keys}: {schema_path.relative_to(ROOT)}", errors)
+    required = {"$schema", "$id", "title", "type", "required", "additionalProperties"}
+    missing = sorted(required - set(data))
+    require(not missing, f"schema missing keys {missing}: {schema_path.relative_to(ROOT)}", errors)
     require(
         data.get("$schema") == "https://json-schema.org/draft/2020-12/schema",
-        f"canonical schema must use draft 2020-12: {schema_path.relative_to(ROOT)}",
+        f"schema must use draft 2020-12: {schema_path.relative_to(ROOT)}",
         errors,
     )
-    require(data.get("type") == "object", f"canonical schema root type must be object: {schema_path.relative_to(ROOT)}", errors)
-    require(isinstance(data.get("required"), list), f"canonical schema required must be an array: {schema_path.relative_to(ROOT)}", errors)
-    require(data.get("additionalProperties") is False, f"canonical schema must set additionalProperties to false: {schema_path.relative_to(ROOT)}", errors)
+    require(data.get("type") == "object", f"schema root type must be object: {schema_path.relative_to(ROOT)}", errors)
+    require(data.get("additionalProperties") is False, f"schema root must disallow extra properties: {schema_path.relative_to(ROOT)}", errors)
 
 
 def main() -> int:
     errors: list[str] = []
 
-    for _, prompt_path, schema_path in PROMPT_SEQUENCE:
-        require(prompt_path.exists(), f"missing prompt file: {prompt_path.relative_to(ROOT)}", errors)
-        if schema_path is not None:
-            validate_schema_file(schema_path, errors)
+    prompt_files = sorted(path.name for path in (ROOT / "prompts").glob("*.md"))
+    schema_files = sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / "schemas").glob("*.schema.json"))
 
-    require(SCHEMA_README.exists(), f"missing file: {SCHEMA_README.relative_to(ROOT)}", errors)
-    for schema_path in CANONICAL_SCHEMAS:
-        validate_canonical_schema(schema_path, errors)
+    require(prompt_files == sorted(PROMPTS), f"prompt inventory drift: {prompt_files}", errors)
+    require(schema_files == sorted(SCHEMAS), f"schema inventory drift: {schema_files}", errors)
 
-    for _, prompt_path, schema_path in PROMPT_SEQUENCE:
+    for prompt_name, schema_ref in PROMPTS.items():
+        prompt_path = ROOT / "prompts" / prompt_name
+        require(prompt_path.exists(), f"missing prompt file: prompts/{prompt_name}", errors)
         if not prompt_path.exists():
             continue
-        content = prompt_path.read_text(encoding="utf-8")
-        if schema_path is None:
-            require("Return JSON matching" not in content, f"unexpected schema instruction in plain-text prompt: {prompt_path.relative_to(ROOT)}", errors)
-            continue
-        require(BASE_PROMPT_REQUIREMENT in content, f"missing base-prompt requirement: {prompt_path.relative_to(ROOT)}", errors)
-        require(RAW_JSON_REQUIREMENT in content, f"missing raw-JSON requirement: {prompt_path.relative_to(ROOT)}", errors)
-        schema_ref = schema_path.relative_to(ROOT).as_posix()
-        require(schema_ref in content, f"prompt does not reference expected schema {schema_ref}: {prompt_path.relative_to(ROOT)}", errors)
 
-    prompt_files = list((ROOT / "prompts").glob("*.md"))
-    schema_files = list((ROOT / "schemas").glob("*.schema.json"))
-    require(len(prompt_files) == 12, f"expected 12 prompts, found {len(prompt_files)}", errors)
-    require(len(schema_files) >= len(CANONICAL_SCHEMAS), f"expected at least {len(CANONICAL_SCHEMAS)} schemas, found {len(schema_files)}", errors)
+        content = prompt_path.read_text(encoding="utf-8")
+        if prompt_name == "base-memory-harness.md":
+            require(RAW_JSON_REQUIREMENT not in content, "base prompt must not require raw JSON output", errors)
+            continue
+
+        require(BASE_PROMPT_REQUIREMENT in content, f"missing base prompt requirement: prompts/{prompt_name}", errors)
+        require(RAW_JSON_REQUIREMENT in content, f"missing raw JSON requirement: prompts/{prompt_name}", errors)
+        require(schema_ref is not None and schema_ref in content, f"missing schema reference {schema_ref}: prompts/{prompt_name}", errors)
+
+    expected_placeholders = {
+        "base-memory-harness.md": [],
+        "pre-task-briefing.md": [
+            "approved_memories",
+            "conflicted_memories",
+            "now",
+            "pending_candidates",
+            "repo_scope",
+            "task",
+        ],
+        "post-task-distillation.md": [
+            "approved_memories",
+            "existing_candidates",
+            "now",
+            "repo_scope",
+            "session_events",
+            "task",
+        ],
+        "memory-conflict-check.md": ["approved_memories", "now", "pending_candidates", "repo_scope"],
+        "memory-approval.md": ["approved_memories", "conflict_report", "now", "pending_candidates", "repo_scope"],
+        "local-memory-search.md": ["approved_memories", "now", "pending_candidates", "query", "repo_scope"],
+    }
+
+    for prompt_name, expected in expected_placeholders.items():
+        actual = placeholders((ROOT / "prompts" / prompt_name).read_text(encoding="utf-8"))
+        require(actual == expected, f"placeholder drift in prompts/{prompt_name}: expected {expected}, got {actual}", errors)
+
+    for schema in SCHEMAS:
+        validate_schema(ROOT / schema, errors)
+
+    constants = (ROOT / "runtime" / "contracts" / "constants.ts").read_text(encoding="utf-8")
+    require("BRIEFING_MAX_WORDS = 200" in constants, "BRIEFING_MAX_WORDS must remain 200", errors)
+    require("BRIEFING_MAX_ITEMS = 8" in constants, "BRIEFING_MAX_ITEMS must remain 8", errors)
+    require("SCORE_MIN = 0" in constants and "SCORE_MAX = 1" in constants, "score range constants must remain 0..1", errors)
 
     if errors:
         for error in errors:
@@ -123,7 +136,7 @@ def main() -> int:
         return 1
 
     print("Memory harness repository validation passed.")
-    print(f"Validated {len(prompt_files)} prompts and {len(schema_files)} schemas.")
+    print(f"Validated {len(PROMPTS)} prompts and {len(SCHEMAS)} schemas.")
     return 0
 
 

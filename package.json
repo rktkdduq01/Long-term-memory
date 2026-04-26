@@ -5,9 +5,13 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "node --test --experimental-strip-types runtime/runtime.test.ts tests/repository.test.ts",
-    "validate": "python3 scripts/validate_memory_harness.py && npm run typecheck && node --experimental-strip-types runtime/validateJson.ts schemas/memory-selection.schema.json runtime/samples/selection-output.json && npm test",
-    "build:briefing": "node --experimental-strip-types runtime/buildBriefing.ts --use-examples --stdout",
-    "build:candidates": "node --experimental-strip-types runtime/extractCandidates.ts --session examples/sample-session-events.json --stdout"
+    "validate": "python3 scripts/validate_memory_harness.py && npm run typecheck && npm test && npm run memory:validate",
+    "memory:briefing": "node --experimental-strip-types runtime/cli/memoryBriefing.ts",
+    "memory:search": "node --experimental-strip-types runtime/cli/memorySearch.ts",
+    "memory:candidates": "node --experimental-strip-types runtime/cli/memoryCandidates.ts",
+    "memory:approve": "node --experimental-strip-types runtime/cli/memoryApprove.ts",
+    "memory:reject": "node --experimental-strip-types runtime/cli/memoryReject.ts",
+    "memory:validate": "node --experimental-strip-types runtime/cli/memoryValidate.ts"
   },
   "devDependencies": {
     "@types/node": "^24.9.1",

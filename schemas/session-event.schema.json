@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://long-term-memory.local/schemas/session-event.schema.json",
+  "title": "Session Event",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "source_type",
+    "source_id",
+    "observed_at",
+    "summary",
+    "related_files",
+    "trust_level",
+    "metadata"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "user_request",
+        "assistant_action",
+        "tool_run",
+        "validation_result",
+        "error",
+        "review_feedback",
+        "decision",
+        "other"
+      ]
+    },
+    "source_type": {
+      "$ref": "./memory.schema.json#/$defs/sourceType"
+    },
+    "source_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "related_files": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "trust_level": {
+      "$ref": "./memory.schema.json#/$defs/sourceTrustLevel"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}
